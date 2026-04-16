@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-16 18:55:49 baojie>
+#+DATE: Time-stamp: <2026-04-16 19:01:11 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -2297,6 +2297,38 @@ Embark integrates with Consult and Vertico to provide context-sensitive actions 
 #+end_src
 
 ** Magit
+
+magit是Emacs的一个强大的git前端.
+
+工作流程如下：
+1. 修改本地仓储
+2. stage这些修改
+3. 提交这些修改
+4. push到远端github
+
+一个最小的 magit 流程包括：
+
+C-x g 打开 magit buffer 查看仓储状态
+s stage 当前修改
+c 提交当前修改 (C-c C-c 提交)
+P push当前修改
+F pull 远端的修改
+
+create a new repository on the command line
+
+echo "# EmacsMinimalConfig" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin git@github.com:LMYJBZL/EmacsMinimalConfig.git
+git push -u origin main
+
+push an existing repository from the command line
+
+git remote add origin git@github.com:LMYJBZL/EmacsMinimalConfig.git
+git branch -M main
+git push -u origin main
 
 #+begin_src emacs-lisp
 (use-package magit
