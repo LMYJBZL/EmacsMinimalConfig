@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-17 17:47:48 baojie>
+#+DATE: Time-stamp: <2026-04-17 20:53:36 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -775,7 +775,7 @@ this stage of initialization."
 #+begin_src emacs-lisp
 (use-package display-line-numbers
   :ensure nil
-  :hook ((prog-mode org-mode LaTeX-mode) . display-line-numbers-mode)
+  :hook ((prog-mode org-mode latex-mode) . display-line-numbers-mode)
   :custom
   (display-line-numbers-width 5)
   (display-line-numbers-widen t))
@@ -1078,8 +1078,8 @@ Enables Emacs to remember the last location within a file upon reopening.
 ;; Enabling `pixel-scroll-precision-mode' is unnecessary with emacs-mac, as
 ;; this version of Emacs natively supports smooth scrolling.
 ;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
-(setq pixel-scroll-precision-use-momentum nil) ; Precise/smoother scrolling
-(pixel-scroll-precision-mode 1)
+;; (setq pixel-scroll-precision-use-momentum nil) ; Precise/smoother scrolling
+;; (pixel-scroll-precision-mode 1)
 
 ;; Track changes in the window configuration, allowing undoing actions such as
 ;; closing windows.
