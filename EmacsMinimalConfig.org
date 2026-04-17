@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-17 21:50:15 baojie>
+#+DATE: Time-stamp: <2026-04-17 22:57:01 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1048,6 +1048,11 @@ Enables Emacs to remember the last location within a file upon reopening.
       (window-height . 0.25)
       (side . bottom)
       (slot . 0))
+     ("\\`magit:"
+      (display-buffer-in-side-window)
+      (side . bottom)
+      (slot . 9)
+      (window-height . 0.2))
      ("\\*\\([Hh]elp\\)\\*"
       (display-buffer-in-side-window)
       (window-width . 75)
