@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-16 21:48:09 baojie>
+#+DATE: Time-stamp: <2026-04-17 17:08:31 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1112,6 +1112,9 @@ Enables Emacs to remember the last location within a file upon reopening.
 ;; windows.
 ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
 (add-hook 'after-init-hook #'window-divider-mode)
+
+(setq display-buffer-base-action
+      '((display-buffer-same-window)))
 #+end_src
 
 ** Cursor
