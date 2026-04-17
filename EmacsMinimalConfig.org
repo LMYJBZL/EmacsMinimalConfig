@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-17 17:08:31 baojie>
+#+DATE: Time-stamp: <2026-04-17 17:47:48 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -954,22 +954,21 @@ this stage of initialization."
    (list "^/\\(?:ssh\\|su\\|sudo\\)?:"
          "\\.\\(gz\\|png\\|jpg\\|elc\\|pdf\\)$"))
   :config
-  (defconst my/recentf-keep-dirs
-    '("~/Documents/Notes/课/当前学期/"
-      "~/Documents/Notes/Slides/"
-      "~/Documents/Notes/Papers/"
-      "~/Documents/Archives/Emacs/")
-    "Recent files to keep")
+  (defconst my/recentf-keep-paths
+    (mapcar #'expand-file-name
+            '("~/Documents/Notes/课/当前学期/"
+              "~/Documents/Notes/Slides/"
+              "~/Documents/Notes/Papers/"
+              "~/Documents/Archives/Emacs/")))
 
-  (defconst my/recentf-keep-dirs-expanded
-    (mapcar #'expand-file-name my/recentf-keep-dirs)
-    "Expanded paths for faster lookup")
-
-  (setq recentf-keep (list 'recentf-keep-default-predicate
-                           (lambda (file)
-                             (let ((full-path (expand-file-name file)))
-                               (cl-some (lambda (dir) (string-prefix-p dir full-path))
-                                        my/recentf-keep-dirs-expanded))))))
+  (setq recentf-keep
+        (list (lambda (file)
+                (let ((full-path (expand-file-name file)))
+                  (cl-some (lambda (path)
+                             (if (directory-name-p path)
+                                 (string-prefix-p path full-path)
+                               (string= path full-path)))
+                           my/recentf-keep-paths))))))
 #+end_src
 
 ** Saveplace
