@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-17 20:53:36 baojie>
+#+DATE: Time-stamp: <2026-04-17 21:50:15 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -116,14 +116,14 @@ Note that this should end with a directory separator.")
 
 #+begin_src emacs-lisp
 (setq user-emacs-directory "~/.emacs.d/")
-(defvar my-cache-dir
+(defvar my/cache-dir
   (expand-file-name "var/" user-emacs-directory))
-(make-directory my-cache-dir t)
+(make-directory my/cache-dir t)
 
 (setq custom-theme-directory
-      (expand-file-name "themes/" my-cache-dir))
+      (expand-file-name "themes/" my/cache-dir))
 
-(setq custom-file (expand-file-name "custom.el" my-cache-dir))
+(setq custom-file (expand-file-name "custom.el" my/cache-dir))
 
 ;;; ============================================================================
 ;;; 用户自定义路径常量
@@ -161,13 +161,13 @@ Note that this should end with a directory separator.")
   "~/Library/Mobile Documents/com~apple~cloudDocs/snippets"
   "iCloud 中的 yasnippet 片段目录（注意含空格）。")
 
-(setq savehist-file (expand-file-name "history" my-cache-dir)
-      recentf-save-file (expand-file-name "recentf" my-cache-dir)
-      save-place-file (expand-file-name "saveplace" my-cache-dir)
-      auto-save-list-file-prefix (expand-file-name "auto-save/" my-cache-dir)
-      tramp-auto-save-directory (expand-file-name "tramp-autosave/" my-cache-dir)
-      url-history-file (expand-file-name "url/history" my-cache-dir)
-      backup-directory-alist `(("." . ,(expand-file-name "backup/" my-cache-dir))))
+(setq savehist-file (expand-file-name "history" my/cache-dir)
+      recentf-save-file (expand-file-name "recentf" my/cache-dir)
+      save-place-file (expand-file-name "saveplace" my/cache-dir)
+      auto-save-list-file-prefix (expand-file-name "auto-save/" my/cache-dir)
+      tramp-auto-save-directory (expand-file-name "tramp-autosave/" my/cache-dir)
+      url-history-file (expand-file-name "url/history" my/cache-dir)
+      backup-directory-alist `(("." . ,(expand-file-name "backup/" my/cache-dir))))
 
 ;; Prefer loading newer compiled files
 (setq load-prefer-newer t)
@@ -264,7 +264,7 @@ pre-early-init.el, and post-early-init.el.")
 (set-language-environment "UTF-8")
 
 ;; Increase how much is read from processes in a single chunk
-(setq read-process-output-max (* 2 1024 1024))  ; 1024kb
+(setq read-process-output-max (* 2 1024 1024))  ; 2MB
 
 (setq process-adaptive-read-buffering nil)
 
@@ -590,7 +590,7 @@ this stage of initialization."
   (fset 'yes-or-no-p 'y-or-n-p))
 #+end_src
 
-** Packlage.el
+** Package.el
 
 #+begin_src emacs-lisp
 (when (and (bound-and-true-p minimal-emacs-package-initialize-and-refresh)
@@ -669,7 +669,7 @@ this stage of initialization."
   :commands undo-fu-session-global-mode
   :init
   (setq undo-fu-session-directory
-        (expand-file-name "undo-fu-session/" my-cache-dir))
+        (expand-file-name "undo-fu-session/" my/cache-dir))
   :hook (after-init . undo-fu-session-global-mode))
 #+end_src
 
@@ -745,9 +745,11 @@ this stage of initialization."
 ;; (setq redisplay-skip-fontification-on-input t)
 
 (defun my/maybe-skip-fontification ()
-  "仅在大文件中跳过字体锁定"
-  (setq-local redisplay-skip-fontification-on-input
-              (> (point-max) 50000)))  ; 50KB 以上
+  "仅在大文件中跳过字体锁定(改进：添加更详细的错误处理)"
+  (condition-case nil
+      (setq-local redisplay-skip-fontification-on-input
+                  (> (point-max) 50000))
+    (error nil)))
 
 (add-hook 'find-file-hook #'my/maybe-skip-fontification)
 #+end_src
@@ -893,9 +895,9 @@ this stage of initialization."
 (setq auto-save-include-big-deletions t)
 
 ;; (setq auto-save-list-file-prefix
-;;       (expand-file-name "autosave/" my-cache-dir))
+;;       (expand-file-name "autosave/" my/cache-dir))
 ;; (setq tramp-auto-save-directory
-;;       (expand-file-name "tramp-autosave/" my-cache-dir))
+;;       (expand-file-name "tramp-autosave/" my/cache-dir))
 
 (setq auto-save-file-name-transforms
       `(("\\`/[^/]*:\\([^/]*/\\)*\\([^/]*\\)\\'"
@@ -980,7 +982,7 @@ Enables Emacs to remember the last location within a file upon reopening.
   :ensure nil
   ;; :init
   ;; (setq save-place-file
-  ;;       (expand-file-name "saveplace" my-cache-dir))
+  ;;       (expand-file-name "saveplace" my/cache-dir))
   :config
   (save-place-mode 1)
   (setq save-place-limit 600)
@@ -997,7 +999,7 @@ Enables Emacs to remember the last location within a file upon reopening.
   :init
   ;; 必须在 mode 启动前设置
   ;; (setq savehist-file
-  ;;      (expand-file-name "history" my-cache-dir))
+  ;;      (expand-file-name "history" my/cache-dir))
   (setq savehist-autosave-interval 600
         history-length 300
         savehist-additional-variables
@@ -1029,6 +1031,9 @@ Enables Emacs to remember the last location within a file upon reopening.
                 (internal-border-width . 3)))
 
 (setq resize-mini-windows 'grow-only)
+
+(setq pop-up-frames nil)
+(setq ns-pop-up-frames nil)
 #+end_src
 
 ** Windows
@@ -1111,9 +1116,6 @@ Enables Emacs to remember the last location within a file upon reopening.
 ;; windows.
 ;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
 (add-hook 'after-init-hook #'window-divider-mode)
-
-(setq display-buffer-base-action
-      '((display-buffer-same-window)))
 #+end_src
 
 ** Cursor
@@ -2274,7 +2276,7 @@ Embark integrates with Consult and Vertico to provide context-sensitive actions 
   :commands (yas-minor-mode yas-expand)
   :init
   (setq yas-snippet-dirs
-        (list (expand-file-name "snippets/" my-cache-dir)))
+        (list (expand-file-name "snippets/" my/cache-dir)))
   :config
   ;; (add-hook 'yas-minor-mode-hook (lambda () (yas-activate-extra-mode 'fundamental-mode)))
   ;; Suppress warning for yasnippet code.
