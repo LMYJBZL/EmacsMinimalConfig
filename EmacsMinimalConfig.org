@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-17 22:57:01 baojie>
+#+DATE: Time-stamp: <2026-04-18 14:38:40 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -777,7 +777,7 @@ this stage of initialization."
 #+begin_src emacs-lisp
 (use-package display-line-numbers
   :ensure nil
-  :hook ((prog-mode org-mode latex-mode) . display-line-numbers-mode)
+  :hook ((prog-mode org-mode LaTeX-mode) . display-line-numbers-mode)
   :custom
   (display-line-numbers-width 5)
   (display-line-numbers-widen t))
@@ -961,6 +961,8 @@ this stage of initialization."
             '("~/Documents/Notes/课/当前学期/"
               "~/Documents/Notes/Slides/"
               "~/Documents/Notes/Papers/"
+              "~/Documents/Notes/Misc/"
+               "~/Documents/Notes/Review/"
               "~/Documents/Archives/Emacs/")))
 
   (setq recentf-keep
@@ -1051,7 +1053,7 @@ Enables Emacs to remember the last location within a file upon reopening.
      ("\\`magit:"
       (display-buffer-in-side-window)
       (side . bottom)
-      (slot . 9)
+      (slot . 1)
       (window-height . 0.2))
      ("\\*\\([Hh]elp\\)\\*"
       (display-buffer-in-side-window)
@@ -2943,7 +2945,7 @@ Need-to-have for programmers.
     (flymake-mode)
     (yas-minor-mode)))
 
-  ;;; 自动设置 LaTeX 编译引擎（根据是否包含中文）
+;;; 自动设置 LaTeX 编译引擎（根据是否包含中文）
 (require 'files-x)   ; 提供 add-file-local-variable / delete-file-local-variable
 
 (defun my/tex-buffer-has-chinese-p ()
@@ -2956,13 +2958,14 @@ Need-to-have for programmers.
   "根据文件是否包含中文，设置 TeX-engine 局部变量（xetex 或 pdflatex）。
 返回 t 如果实际修改了文件（即值发生了变化），否则返回 nil。"
   (when (derived-mode-p 'latex-mode)
+    (save-excursion
     (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex))
           (current-engine (ignore-errors (file-local-variable-if-set 'TeX-engine))))
       (unless (eq current-engine desired-engine)
         ;; 删除旧值（如果存在），再添加新值
         (ignore-errors (delete-file-local-variable 'TeX-engine))
         (add-file-local-variable 'TeX-engine desired-engine)
-        t))))   ; 返回 t 表示有改变
+        t)))))   ; 返回 t 表示有改变
 
 (defun my/tex-update-engine-before-command (&rest _args)
   "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新执行 TeX-normal-mode。"
@@ -2970,6 +2973,7 @@ Need-to-have for programmers.
     ;; 文件局部变量已更改，需要重新解析文件以应用新 engine
     (TeX-normal-mode)))
 
+;; 编译后复制 PDF 文件
 (add-hook 'TeX-after-compilation-finished-functions
           (lambda (output-filename)
             (let* ((base (file-name-base output-filename))
