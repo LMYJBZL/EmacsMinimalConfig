@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-20 10:47:42 baojie>
+#+DATE: Time-stamp: <2026-04-20 11:25:07 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1114,9 +1114,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Cursor
 
 #+begin_src emacs-lisp
-;; The blinking cursor is distracting and interferes with cursor settings in
-;; some minor modes that try to change it buffer-locally (e.g., Treemacs).
-(when (bound-and-true-p blink-cursor-mode)
+(when (fboundp 'blink-cursor-mode)
   (blink-cursor-mode 1))
 
 (setq blink-cursor-interval 0.7)
@@ -1647,7 +1645,9 @@ permissions 为t,那么你还能编辑文件属性).
 
 ** Xref
 
-#+begin_src emacs-lisp
+清理重复的 xref 配置，只保留 Consult 版本
+
+#+begin_src emacs-lisp :tangle no
 ;; Enable completion in the minibuffer instead of the definitions buffer
 (setq xref-show-definitions-function 'xref-show-definitions-completing-read
       xref-show-xrefs-function 'xref-show-definitions-completing-read)
@@ -2036,8 +2036,18 @@ permissions 为t,那么你还能编辑文件属性).
       (my/set-all-frames-cursor-color color)))
 
   ;; 在输入法状态可能改变的时刻（如切换 buffer、切换窗口、执行命令后）更新
-  (add-hook 'post-command-hook #'my/update-cursor-color-all-frames)
-  (add-hook 'after-change-major-mode-hook #'my/update-cursor-color-all-frames)
+  ;; (add-hook 'post-command-hook #'my/update-cursor-color-all-frames)
+  ;; (add-hook 'after-change-major-mode-hook #'my/update-cursor-color-all-frames)
+
+  ;; 把 Rime 的 post-command-hook 改成更轻的刷新方式
+  (defun my/rime-refresh-cursor-color (&rest _)
+    (my/update-cursor-color-all-frames))
+
+  (add-hook 'input-method-activate-hook #'my/rime-refresh-cursor-color)
+  (add-hook 'input-method-inactivate-hook #'my/rime-refresh-cursor-color)
+  (add-hook 'window-selection-change-functions #'my/rime-refresh-cursor-color)
+  (add-hook 'after-make-frame-functions #'my/init-new-frame-cursor-color)
+
 
   ;; 新 frame 创建时，强制应用当前正确的颜色（防止 default-frame-alist 被其他包覆盖）
   (defun my/init-new-frame-cursor-color (frame)
