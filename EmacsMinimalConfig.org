@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-20 11:25:07 baojie>
+#+DATE: Time-stamp: <2026-04-20 19:53:43 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1041,37 +1041,68 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Window
 
 #+begin_src emacs-lisp
-(setq switch-to-buffer-obey-display-actions t)
+(setq display-buffer-base-action
+      '((display-buffer-reuse-window display-buffer-same-window)))
 
-(use-package window
-  :ensure nil
-  :custom
-  (display-buffer-alist
-   `(("\\`\\*Async Shell Command\\*\\'"
-      (display-buffer-no-window))
+(setq display-buffer-alist
+      '(("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
+         (display-buffer-in-side-window)
+         (side . bottom)
+         (slot . 0)
+         (window-height . 0.2)
+         (dedicated . t))
 
-     ("\\`\\*\\(Warnings\\|Compile-Log\\|Org Links\\)\\*\\'"
-      (display-buffer-no-window)
-      (allow-no-window . t))
+        ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
+         (display-buffer-in-side-window)
+         (side . right)
+         (slot . 0)
+         (window-width . 0.33)
+         (dedicated . t))
 
-     ("\\*\\(Org \\(Select\\|Note\\)\\|Agenda Commands\\)\\*"
-      (display-buffer-in-side-window)
-      (side . bottom)
-      (slot . 0)
-      (window-height . 0.3)
-      (dedicated . t)
-      (window-parameters . ((mode-line-format . none))))
+        ("\\*\\(Embark Collect\\|xref\\|grep\\|Occur\\)\\*"
+         (display-buffer-in-side-window)
+         (side . bottom)
+         (slot . 1)
+         (window-height . 0.3))
 
-     ("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-      (display-buffer-in-side-window)
-      (side . bottom)
-      (slot . 1)
-      (window-height . 0.3)
-      (window-parameters . ((mode-line-format . none))))
+        ("\\*compilation\\*"
+         (display-buffer-reuse-window display-buffer-at-bottom)
+         (window-height . 0.25))
 
-     ((derived-mode . magit-status-mode)
-      (display-buffer-reuse-window display-buffer-below-selected)
-     ))))
+        ((derived-mode . magit-mode)
+         (display-buffer-reuse-window display-buffer-below-selected)
+         (window-height . 0.35))))
+
+
+;; (use-package window
+;;   :ensure nil
+;;   :custom
+;;   (display-buffer-alist
+;;    `(("\\`\\*Async Shell Command\\*\\'"
+;;       (display-buffer-no-window))
+;;
+;;      ("\\`\\*\\(Warnings\\|Compile-Log\\|Org Links\\)\\*\\'"
+;;       (display-buffer-no-window)
+;;       (allow-no-window . t))
+;;
+;;      ("\\*\\(Org \\(Select\\|Note\\)\\|Agenda Commands\\)\\*"
+;;       (display-buffer-in-side-window)
+;;       (side . bottom)
+;;       (slot . 0)
+;;       (window-height . 0.3)
+;;       (dedicated . t)
+;;       (window-parameters . ((mode-line-format . none))))
+;;
+;;      ("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+;;       (display-buffer-in-side-window)
+;;       (side . bottom)
+;;       (slot . 1)
+;;       (window-height . 0.3)
+;;       (window-parameters . ((mode-line-format . none))))
+;;
+;;      ((derived-mode . magit-status-mode)
+;;       (display-buffer-reuse-window display-buffer-below-selected)
+;;       ))))
 
 ;; Enabling `pixel-scroll-precision-mode' is unnecessary with emacs-mac, as
 ;; this version of Emacs natively supports smooth scrolling.
@@ -2908,8 +2939,8 @@ Need-to-have for programmers.
   ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
 
-  (advice-add 'TeX-command-master :before #'my/tex-update-engine-before-command)
-  (advice-add 'TeX-command-run-all :before #'my/tex-update-engine-before-command)
+  ;; (advice-add 'TeX-command-master :before #'my/tex-update-engine-before-command)
+  ;; (advice-add 'TeX-command-run-all :before #'my/tex-update-engine-before-command)
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
@@ -2941,33 +2972,144 @@ Need-to-have for programmers.
     (flymake-mode)
     (yas-minor-mode)))
 
-;;; 自动设置 LaTeX 编译引擎（根据是否包含中文）
-(require 'files-x)   ; 提供 add-file-local-variable / delete-file-local-variable
+;; ;;; 自动设置 LaTeX 编译引擎（根据是否包含中文）
+;; (require 'files-x)   ; 提供 add-file-local-variable / delete-file-local-variable
+;;
+;; (defun my/tex-buffer-has-chinese-p ()
+;;   "判断当前缓冲区是否包含中文字符（CJK 统一表意文字，范围 U+4E00..U+9FFF）。"
+;;   (save-excursion
+;;     (goto-char (point-min))
+;;     (re-search-forward "[\u4e00-\u9fff]" nil t)))
+;;
+;; (defun my/tex-update-tex-engine-local-var ()
+;;   "根据文件是否包含中文，设置 TeX-engine 局部变量（xetex 或 pdflatex）。
+;; 返回 t 如果实际修改了文件（即值发生了变化），否则返回 nil。"
+;;   (when (derived-mode-p 'latex-mode)
+;;     (save-excursion
+;;       (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex))
+;;             (current-engine (ignore-errors (file-local-variable-if-set 'TeX-engine))))
+;;         (unless (eq current-engine desired-engine)
+;;           ;; 删除旧值（如果存在），再添加新值
+;;           (ignore-errors (delete-file-local-variable 'TeX-engine))
+;;           (add-file-local-variable 'TeX-engine desired-engine)
+;;           t)))))   ; 返回 t 表示有改变
+;;
+;; ;; (defun my/tex-update-engine-before-command (&rest _args)
+;; ;;   "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新执行 TeX-normal-mode。"
+;; ;;   (when (my/tex-update-tex-engine-local-var)
+;; ;;     ;; 文件局部变量已更改，需要重新解析文件以应用新 engine
+;; ;;     (TeX-normal-mode)))
+;;
+;; (defun my/tex-update-engine-before-command (&rest _args)
+;;   "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新应用局部变量。"
+;;   (when (my/tex-update-tex-engine-local-var)
+;;     ;; 文件局部变量已更改，重新解析局部变量（但不触发 normal-mode）
+;;     (hack-local-variables)
+;;     ;; 确保当前缓冲区的 TeX-engine 与期望值一致
+;;     (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex)))
+;;       (setq-local TeX-engine desired-engine))))
 
-(defun my/tex-buffer-has-chinese-p ()
-  "判断当前缓冲区是否包含中文字符（CJK 统一表意文字，范围 U+4E00..U+9FFF）。"
+(defgroup my-auctex-auto-engine nil
+  "Auto choose TeX engine from buffer content."
+  :group 'tex)
+
+(defcustom my-auctex-auto-engine-chinese-tex-regexp
+  (concat
+   "^[[:space:]]*\\\\documentclass"
+   "\\(?:\\[[^]]*\\]\\)?"
+   "{\\(ctexart\\|ctexrep\\|ctexbook\\|ctexbeamer\\)}"
+   "\\|^[[:space:]]*\\\\usepackage"
+   "\\(?:\\[[^]]*\\]\\)?"
+   "{\\([^}]*,\\)?ctex\\(,[^}]*\\)?}")
+  "Regexp used to decide whether the current TeX buffer uses Chinese TeX support."
+  :type 'regexp
+  :group 'my-auctex-auto-engine)
+
+(defcustom my-auctex-auto-engine-local-vars-prefix "%%%"
+  "Comment prefix used when writing the file-local variable block."
+  :type 'string
+  :group 'my-auctex-auto-engine)
+
+(defun my-auctex--file-local-variables-bounds ()
+  "Return the bounds of the file-local variable block, or nil."
+  (save-excursion
+    (goto-char (point-max))
+    (let (start end)
+      (when (re-search-backward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?Local Variables:[[:space:]]*$" nil t)
+        (setq start (line-beginning-position))
+        (when (re-search-forward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?End:[[:space:]]*$" nil t)
+          (setq end (line-end-position))
+          (cons start end))))))
+
+(defun my-auctex--file-local-variables-text ()
+  "Return the file-local variable block text for the current buffer, or nil."
+  (let ((bounds (my-auctex--file-local-variables-bounds)))
+    (when bounds
+      (buffer-substring-no-properties (car bounds) (cdr bounds)))))
+
+(defun my-auctex--buffer-uses-chinese-tex-p ()
+  "Return non-nil when the current buffer uses Chinese TeX classes or packages."
   (save-excursion
     (goto-char (point-min))
-    (re-search-forward "[\u4e00-\u9fff]" nil t)))
+    (re-search-forward my-auctex-auto-engine-chinese-tex-regexp nil t)))
 
-(defun my/tex-update-tex-engine-local-var ()
-  "根据文件是否包含中文，设置 TeX-engine 局部变量（xetex 或 pdflatex）。
-返回 t 如果实际修改了文件（即值发生了变化），否则返回 nil。"
-  (when (derived-mode-p 'latex-mode)
+(defun my-auctex--desired-engine ()
+  "Return the TeX engine that matches the current buffer content."
+  (if (my-auctex--buffer-uses-chinese-tex-p) 'xetex 'luatex))
+
+(defun my-auctex--local-vars-engine-line (engine)
+  "Return a file-local variable line for ENGINE."
+  (format "%s TeX-engine: %s" my-auctex-auto-engine-local-vars-prefix engine))
+
+(defun my-auctex--local-vars-block (engine)
+  "Return a complete file-local variable block for ENGINE."
+  (mapconcat
+   #'identity
+   (list ""
+         (format "%s Local Variables:" my-auctex-auto-engine-local-vars-prefix)
+         (my-auctex--local-vars-engine-line engine)
+         (format "%s End:" my-auctex-auto-engine-local-vars-prefix))
+   "\n"))
+
+(defun my-auctex--write-engine-to-local-variables (engine)
+  "Write ENGINE into the file-local variable block for the current buffer."
+  (let ((bounds (my-auctex--file-local-variables-bounds))
+        (engine-line (my-auctex--local-vars-engine-line engine)))
     (save-excursion
-    (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex))
-          (current-engine (ignore-errors (file-local-variable-if-set 'TeX-engine))))
-      (unless (eq current-engine desired-engine)
-        ;; 删除旧值（如果存在），再添加新值
-        (ignore-errors (delete-file-local-variable 'TeX-engine))
-        (add-file-local-variable 'TeX-engine desired-engine)
-        t)))))   ; 返回 t 表示有改变
+      (save-restriction
+        (widen)
+        (cond
+         (bounds
+          (goto-char (car bounds))
+          (let ((block-end-marker (copy-marker (cdr bounds) t)))
+            (if (re-search-forward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?TeX-engine:[[:space:]]*.*$" block-end-marker t)
+                (replace-match engine-line t t)
+              (goto-char block-end-marker)
+              (forward-line -1)
+              (end-of-line)
+              (insert "\n" engine-line))))
+         (t
+          (goto-char (point-max))
+          (insert (my-auctex--local-vars-block engine))))))))
 
-(defun my/tex-update-engine-before-command (&rest _args)
-  "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新执行 TeX-normal-mode。"
-  (when (my/tex-update-tex-engine-local-var)
-    ;; 文件局部变量已更改，需要重新解析文件以应用新 engine
-    (TeX-normal-mode)))
+(defun my-auctex-apply-auto-engine ()
+  "Write and apply `TeX-engine' from buffer content."
+  (when (derived-mode-p 'tex-mode 'plain-tex-mode 'latex-mode 'LaTeX-mode)
+    (let ((engine (my-auctex--desired-engine)))
+      (my-auctex--write-engine-to-local-variables engine)
+      (setq-local TeX-engine engine))))
+
+(defun my-auctex--apply-auto-engine-before (&rest _args)
+  "Advice helper to refresh `TeX-engine' before AUCTeX commands run."
+  (my-auctex-apply-auto-engine))
+
+(with-eval-after-load 'tex
+  ;; `C-c C-n' runs `TeX-normal-mode', so refresh the engine there.
+  (advice-add 'TeX-normal-mode :before #'my-auctex--apply-auto-engine-before)
+  ;; `C-c C-a' runs `TeX-command-run-all', so refresh the engine there too.
+  (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
+  ;; Keep `C-c C-c' consistent as well.
+  (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before))
 
 ;; 编译后复制 PDF 文件
 (add-hook 'TeX-after-compilation-finished-functions
