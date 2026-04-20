@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-20 08:06:35 baojie>
+#+DATE: Time-stamp: <2026-04-20 10:47:42 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1038,7 +1038,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 (setq ns-pop-up-frames nil)
 #+end_src
 
-** Windows
+** Window
 
 #+begin_src emacs-lisp
 (setq switch-to-buffer-obey-display-actions t)
@@ -1047,92 +1047,31 @@ Enables Emacs to remember the last location within a file upon reopening.
   :ensure nil
   :custom
   (display-buffer-alist
-   `(;; ========== 完全不显示的 buffer ==========
-     ("\\`\\*Async Shell Command\\*\\'"
+   `(("\\`\\*Async Shell Command\\*\\'"
       (display-buffer-no-window))
+
      ("\\`\\*\\(Warnings\\|Compile-Log\\|Org Links\\)\\*\\'"
       (display-buffer-no-window)
       (allow-no-window . t))
 
-     ;; ========== 专用 Side Window（常驻侧边） ==========
-     ;; Org Capture 键选择和日志记录
      ("\\*\\(Org \\(Select\\|Note\\)\\|Agenda Commands\\)\\*"
       (display-buffer-in-side-window)
-      (dedicated . t)
       (side . bottom)
       (slot . 0)
+      (window-height . 0.3)
+      (dedicated . t)
       (window-parameters . ((mode-line-format . none))))
 
-     ;; ========== 底部非侧边窗口（可复用，并自动获得焦点） ==========
-     ;; Magit Status：底部显示，高度自适应内容
+     ("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+      (display-buffer-in-side-window)
+      (side . bottom)
+      (slot . 1)
+      (window-height . 0.3)
+      (window-parameters . ((mode-line-format . none))))
+
      ((derived-mode . magit-status-mode)
-      (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (window-height . (lambda (w) (fit-window-to-buffer w nil 1)))   ; 强制缩小
-      (inhibit-switch-frame . t)
-      (dedicated . t)
-      (body-function . select-window))
-
-     ;; Flymake 诊断、Messages、Backtrace 等
-     ((or . ((derived-mode . flymake-diagnostics-buffer-mode)
-             (derived-mode . flymake-project-diagnostics-mode)
-             (derived-mode . messages-buffer-mode)
-             (derived-mode . backtrace-mode)))
-      (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (window-height . 0.3)
-      (inhibit-switch-frame . t)
-      (dedicated . t)
-      (preserve-size . (t . t))
-      (body-function . select-window))
-
-     ;; Embark Actions
-     ("\\*Embark Actions\\*"
-      (display-buffer-below-selected)
-      (window-height . fit-window-to-buffer)
-      (window-parameters . ((no-other-window . t)
-                            (mode-line-format . none))))
-
-     ;; Help、Occur、Grep、Buffer Menu 等
-     ((or . ((derived-mode . help-mode)
-             (derived-mode . occur-mode)
-             (derived-mode . grep-mode)
-             (derived-mode . Buffer-menu-mode)
-             (derived-mode . log-view-mode)))
-      (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (window-height . 0.3)
-      (inhibit-switch-frame . t)
-      (body-function . select-window))
-
-     ;; Shell / Eshell / Comint 模式
-     ((or . ((derived-mode . shell-mode)
-             (derived-mode . eshell-mode)
-             (derived-mode . comint-mode)))
-      (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (window-height . 0.35)
-      (inhibit-switch-frame . t)
-      (body-function . select-window))
-
-     ;; ========== 其他特殊窗口 ==========
-     ("\\*\\(Calendar\\|Bookmark Annotation\\|ert\\).*"
-      (display-buffer-reuse-mode-window display-buffer-below-selected)
-      (window-height . fit-window-to-buffer)
-      (inhibit-switch-frame . t)
-      (dedicated . t))
-
-     ("\\*ispell-top-choices\\*.*"
-      (display-buffer-below-selected)
-      (window-height . fit-window-to-buffer))
-
-     ;; 通用回退：输出/预览窗口
-     ("\\*\\(Output\\|Register Preview\\).*"
-      (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (inhibit-switch-frame . t))
-     ))
-
-  ;; 其他窗口相关设置（可选）
-  :config
-  ;; 如果你想进一步缩小 Magit 窗口的最小高度限制，可以取消下面的注释：
-  ;; (setq window-min-height 1)
-  )
+      (display-buffer-reuse-window display-buffer-below-selected)
+     ))))
 
 ;; Enabling `pixel-scroll-precision-mode' is unnecessary with emacs-mac, as
 ;; this version of Emacs natively supports smooth scrolling.
