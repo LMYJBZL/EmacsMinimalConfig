@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-20 19:53:43 baojie>
+#+DATE: Time-stamp: <2026-04-20 23:29:12 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1041,8 +1041,8 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Window
 
 #+begin_src emacs-lisp
-(setq display-buffer-base-action
-      '((display-buffer-reuse-window display-buffer-same-window)))
+;; (setq display-buffer-base-action
+;;       '((display-buffer-reuse-window display-buffer-same-window)))
 
 (setq display-buffer-alist
       '(("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
