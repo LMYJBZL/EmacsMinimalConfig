@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-19 20:51:53 baojie>
+#+DATE: Time-stamp: <2026-04-20 08:06:35 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1067,10 +1067,9 @@ Enables Emacs to remember the last location within a file upon reopening.
      ;; Magit Status：底部显示，高度自适应内容
      ((derived-mode . magit-status-mode)
       (display-buffer-reuse-mode-window display-buffer-at-bottom)
-      (window-height . fit-window-to-buffer)
+      (window-height . (lambda (w) (fit-window-to-buffer w nil 1)))   ; 强制缩小
       (inhibit-switch-frame . t)
       (dedicated . t)
-      (preserve-size . (t . t))
       (body-function . select-window))
 
      ;; Flymake 诊断、Messages、Backtrace 等
@@ -1111,7 +1110,6 @@ Enables Emacs to remember the last location within a file upon reopening.
       (window-height . 0.35)
       (inhibit-switch-frame . t)
       (body-function . select-window))
-
 
      ;; ========== 其他特殊窗口 ==========
      ("\\*\\(Calendar\\|Bookmark Annotation\\|ert\\).*"
