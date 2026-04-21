@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-21 22:01:03 baojie>
+#+DATE: Time-stamp: <2026-04-21 23:13:02 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1088,6 +1088,20 @@ Enables Emacs to remember the last location within a file upon reopening.
          (window-height . 0.35)
          (inhibit-same-window . nil))   ; 允许在当前窗口重用，但优先在下侧打开
         ))
+
+(defun my/tex-help-fixed-width ()
+  (let ((help-win (get-buffer-window "*TeX Help*")))
+    (when help-win
+      (let ((current (window-total-width help-win))
+            (target 76))
+        (window-resize
+         help-win
+         (- target current)
+         t))))) ;; t = 横向调整
+
+(add-hook 'window-configuration-change-hook
+          #'my/tex-help-fixed-width)
+
 
 ;; 3. Winner 模式：保存/撤销窗口布局，但忽略侧边窗口的 buffer
 (setq winner-boring-buffers
