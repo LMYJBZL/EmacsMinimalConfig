@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-20 23:29:12 baojie>
+#+DATE: Time-stamp: <2026-04-21 08:34:39 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1041,14 +1041,27 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Window
 
 #+begin_src emacs-lisp
-;; (setq display-buffer-base-action
-;;       '((display-buffer-reuse-window display-buffer-same-window)))
+(setq switch-to-buffer-obey-display-actions t)
 
 (setq display-buffer-alist
-      '(("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
+      '(("\\*TeX errors\\*"
          (display-buffer-in-side-window)
          (side . bottom)
          (slot . 0)
+         (window-height . 0.25)
+         (dedicated . t))
+
+        ("\\*TeX Help\\*"
+         (display-buffer-in-side-window)
+         (side . bottom)
+         (slot . 1)
+         (window-height . 0.25)
+         (dedicated . t))
+
+        ("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
+         (display-buffer-in-side-window)
+         (side . bottom)
+         (slot . 2)
          (window-height . 0.2)
          (dedicated . t))
 
@@ -1062,7 +1075,7 @@ Enables Emacs to remember the last location within a file upon reopening.
         ("\\*\\(Embark Collect\\|xref\\|grep\\|Occur\\)\\*"
          (display-buffer-in-side-window)
          (side . bottom)
-         (slot . 1)
+         (slot . 3)
          (window-height . 0.3))
 
         ("\\*compilation\\*"
@@ -1073,6 +1086,14 @@ Enables Emacs to remember the last location within a file upon reopening.
          (display-buffer-reuse-window display-buffer-below-selected)
          (window-height . 0.35))))
 
+;; (defun my-display-buffer-fit-window (window)
+;;   "Fit WINDOW to its buffer, with sane min/max limits."
+;;   (fit-window-to-buffer window
+;;                         (floor (* (frame-height) 0.4))
+;;                         4))
+;;
+;; (setq temp-buffer-resize-mode t)
+;; (setq temp-buffer-max-height (floor (* (frame-height) 0.4)))
 
 ;; (use-package window
 ;;   :ensure nil
@@ -2972,43 +2993,6 @@ Need-to-have for programmers.
     (flymake-mode)
     (yas-minor-mode)))
 
-;; ;;; 自动设置 LaTeX 编译引擎（根据是否包含中文）
-;; (require 'files-x)   ; 提供 add-file-local-variable / delete-file-local-variable
-;;
-;; (defun my/tex-buffer-has-chinese-p ()
-;;   "判断当前缓冲区是否包含中文字符（CJK 统一表意文字，范围 U+4E00..U+9FFF）。"
-;;   (save-excursion
-;;     (goto-char (point-min))
-;;     (re-search-forward "[\u4e00-\u9fff]" nil t)))
-;;
-;; (defun my/tex-update-tex-engine-local-var ()
-;;   "根据文件是否包含中文，设置 TeX-engine 局部变量（xetex 或 pdflatex）。
-;; 返回 t 如果实际修改了文件（即值发生了变化），否则返回 nil。"
-;;   (when (derived-mode-p 'latex-mode)
-;;     (save-excursion
-;;       (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex))
-;;             (current-engine (ignore-errors (file-local-variable-if-set 'TeX-engine))))
-;;         (unless (eq current-engine desired-engine)
-;;           ;; 删除旧值（如果存在），再添加新值
-;;           (ignore-errors (delete-file-local-variable 'TeX-engine))
-;;           (add-file-local-variable 'TeX-engine desired-engine)
-;;           t)))))   ; 返回 t 表示有改变
-;;
-;; ;; (defun my/tex-update-engine-before-command (&rest _args)
-;; ;;   "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新执行 TeX-normal-mode。"
-;; ;;   (when (my/tex-update-tex-engine-local-var)
-;; ;;     ;; 文件局部变量已更改，需要重新解析文件以应用新 engine
-;; ;;     (TeX-normal-mode)))
-;;
-;; (defun my/tex-update-engine-before-command (&rest _args)
-;;   "在编译命令前更新 TeX-engine 局部变量，如果有改变则重新应用局部变量。"
-;;   (when (my/tex-update-tex-engine-local-var)
-;;     ;; 文件局部变量已更改，重新解析局部变量（但不触发 normal-mode）
-;;     (hack-local-variables)
-;;     ;; 确保当前缓冲区的 TeX-engine 与期望值一致
-;;     (let ((desired-engine (if (my/tex-buffer-has-chinese-p) 'xetex 'pdflatex)))
-;;       (setq-local TeX-engine desired-engine))))
-
 (defgroup my-auctex-auto-engine nil
   "Auto choose TeX engine from buffer content."
   :group 'tex)
@@ -3030,22 +3014,31 @@ Need-to-have for programmers.
   :type 'string
   :group 'my-auctex-auto-engine)
 
+(defun my-auctex--local-vars-start-regexp ()
+  "Return the regexp matching the Local Variables line."
+  (format "^[[:space:]]*%s[[:space:]]*Local Variables:[[:space:]]*$"
+          (regexp-quote my-auctex-auto-engine-local-vars-prefix)))
+
+(defun my-auctex--local-vars-end-regexp ()
+  "Return the regexp matching the End line."
+  (format "^[[:space:]]*%s[[:space:]]*End:[[:space:]]*$"
+          (regexp-quote my-auctex-auto-engine-local-vars-prefix)))
+
+(defun my-auctex--local-vars-entry-regexp ()
+  "Return the regexp matching one local variable entry line."
+  (format "^[[:space:]]*%s[[:space:]]*\\([^:\n]+\\):[[:space:]]*\\(.*\\)$"
+          (regexp-quote my-auctex-auto-engine-local-vars-prefix)))
+
 (defun my-auctex--file-local-variables-bounds ()
   "Return the bounds of the file-local variable block, or nil."
   (save-excursion
     (goto-char (point-max))
     (let (start end)
-      (when (re-search-backward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?Local Variables:[[:space:]]*$" nil t)
+      (when (re-search-backward (my-auctex--local-vars-start-regexp) nil t)
         (setq start (line-beginning-position))
-        (when (re-search-forward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?End:[[:space:]]*$" nil t)
+        (when (re-search-forward (my-auctex--local-vars-end-regexp) nil t)
           (setq end (line-end-position))
           (cons start end))))))
-
-(defun my-auctex--file-local-variables-text ()
-  "Return the file-local variable block text for the current buffer, or nil."
-  (let ((bounds (my-auctex--file-local-variables-bounds)))
-    (when bounds
-      (buffer-substring-no-properties (car bounds) (cdr bounds)))))
 
 (defun my-auctex--buffer-uses-chinese-tex-p ()
   "Return non-nil when the current buffer uses Chinese TeX classes or packages."
@@ -3057,59 +3050,111 @@ Need-to-have for programmers.
   "Return the TeX engine that matches the current buffer content."
   (if (my-auctex--buffer-uses-chinese-tex-p) 'xetex 'luatex))
 
-(defun my-auctex--local-vars-engine-line (engine)
-  "Return a file-local variable line for ENGINE."
-  (format "%s TeX-engine: %s" my-auctex-auto-engine-local-vars-prefix engine))
+(defun my-auctex--inspect-local-vars-block ()
+  "Inspect the current file-local variables block.
 
-(defun my-auctex--local-vars-block (engine)
-  "Return a complete file-local variable block for ENGINE."
-  (mapconcat
-   #'identity
-   (list ""
-         (format "%s Local Variables:" my-auctex-auto-engine-local-vars-prefix)
-         (my-auctex--local-vars-engine-line engine)
-         (format "%s End:" my-auctex-auto-engine-local-vars-prefix))
-   "\n"))
-
-(defun my-auctex--write-engine-to-local-variables (engine)
-  "Write ENGINE into the file-local variable block for the current buffer."
+Return a plist with keys:
+`:bounds'    bounds of the block or nil
+`:variables' alist of valid variables found in the block
+`:valid'     non-nil when the block contains no blank or malformed lines."
   (let ((bounds (my-auctex--file-local-variables-bounds))
-        (engine-line (my-auctex--local-vars-engine-line engine)))
+        (entry-regexp (my-auctex--local-vars-entry-regexp))
+        variables
+        (valid t))
+    (when bounds
+      (save-excursion
+        (goto-char (car bounds))
+        (forward-line 1)
+        (while (< (point) (cdr bounds))
+          (let ((line (string-trim-right
+                       (buffer-substring-no-properties
+                        (line-beginning-position)
+                        (line-end-position)))))
+            (cond
+             ((string-blank-p line)
+              (setq valid nil))
+             ((string-match entry-regexp line)
+              (let ((name (match-string 1 line))
+                    (value (match-string 2 line)))
+                (unless (member name '("Local Variables" "End"))
+                  (push (cons (intern name) value) variables))))
+             (t
+              (setq valid nil))))
+          (forward-line 1))))
+    (list :bounds bounds
+          :variables (nreverse variables)
+          :valid (and bounds valid))))
+
+(defun my-auctex--current-local-vars-engine (variables)
+  "Return the current file-local `TeX-engine' value from VARIABLES, or nil."
+  (cdr (assq 'TeX-engine variables)))
+
+(defun my-auctex--local-vars-block (engine &optional variables)
+  "Return a normalized file-local variable block for ENGINE.
+VARIABLES should be an alist of existing local variables to preserve."
+  (let* ((variables (assq-delete-all 'TeX-engine (copy-sequence variables)))
+         (variables (append variables
+                            (list (cons 'TeX-engine (symbol-name engine))))))
+    (mapconcat
+     #'identity
+     (append
+      (list (format "%s Local Variables:" my-auctex-auto-engine-local-vars-prefix))
+      (mapcar
+       (lambda (entry)
+         (format "%s %s: %s"
+                 my-auctex-auto-engine-local-vars-prefix
+                 (car entry)
+                 (cdr entry)))
+       variables)
+      (list (format "%s End:" my-auctex-auto-engine-local-vars-prefix)))
+     "\n")))
+
+(defun my-auctex--write-engine-to-local-variables (engine &optional variables bounds)
+  "Write ENGINE into a normalized file-local variable block.
+VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
+  (let ((block (my-auctex--local-vars-block engine variables)))
     (save-excursion
       (save-restriction
         (widen)
-        (cond
-         (bounds
-          (goto-char (car bounds))
-          (let ((block-end-marker (copy-marker (cdr bounds) t)))
-            (if (re-search-forward "^[[:space:]]*\\(?:[%#;]+[[:space:]]*\\)?TeX-engine:[[:space:]]*.*$" block-end-marker t)
-                (replace-match engine-line t t)
-              (goto-char block-end-marker)
-              (forward-line -1)
-              (end-of-line)
-              (insert "\n" engine-line))))
-         (t
+        (if bounds
+            (let ((start (car bounds))
+                  (end (cdr bounds)))
+              ;; Eat one trailing newline after the old block if it exists,
+              ;; so repeated rewrites do not accumulate blank lines.
+              (when (and (< end (point-max))
+                         (eq (char-after end) ?\n))
+                (setq end (1+ end)))
+              (delete-region start end)
+              (goto-char start)
+              (insert block))
           (goto-char (point-max))
-          (insert (my-auctex--local-vars-block engine))))))))
+          (unless (or (bobp) (bolp))
+            (insert "\n"))
+          (insert block))))))
 
 (defun my-auctex-apply-auto-engine ()
   "Write and apply `TeX-engine' from buffer content."
   (when (derived-mode-p 'tex-mode 'plain-tex-mode 'latex-mode 'LaTeX-mode)
-    (let ((engine (my-auctex--desired-engine)))
-      (my-auctex--write-engine-to-local-variables engine)
-      (setq-local TeX-engine engine))))
+    (let* ((engine (my-auctex--desired-engine))
+           (info (my-auctex--inspect-local-vars-block))
+           (bounds (plist-get info :bounds))
+           (variables (plist-get info :variables))
+           (valid (plist-get info :valid))
+           (current (my-auctex--current-local-vars-engine variables)))
+      (when (or (not valid)
+                (not (equal current (symbol-name engine))))
+        (my-auctex--write-engine-to-local-variables engine variables bounds)
+        (setq-local TeX-engine engine)))))
 
 (defun my-auctex--apply-auto-engine-before (&rest _args)
   "Advice helper to refresh `TeX-engine' before AUCTeX commands run."
   (my-auctex-apply-auto-engine))
 
 (with-eval-after-load 'tex
-  ;; `C-c C-n' runs `TeX-normal-mode', so refresh the engine there.
   (advice-add 'TeX-normal-mode :before #'my-auctex--apply-auto-engine-before)
-  ;; `C-c C-a' runs `TeX-command-run-all', so refresh the engine there too.
   (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
-  ;; Keep `C-c C-c' consistent as well.
   (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before))
+
 
 ;; 编译后复制 PDF 文件
 (add-hook 'TeX-after-compilation-finished-functions
