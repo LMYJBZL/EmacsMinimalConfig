@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-21 08:34:39 baojie>
+#+DATE: Time-stamp: <2026-04-21 21:25:42 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -2887,112 +2887,7 @@ Need-to-have for programmers.
     (call-interactively 'backward-delete-char-untabify)))
 #+end_src
 
-**** AUCTeX
-
 #+begin_src emacs-lisp
-(use-package tex
-  :ensure auctex
-  :defer t
-  :mode ("\\.tex" . LaTeX-mode)
-  :hook (LaTeX-mode . my/latex-mode-setup)
-  :init
-  ;; (with-eval-after-load 'info
-  ;;   (add-to-list 'Info-additional-directory-list
-  ;;                "/Users/baojie/.emacs.d/elpa/auctex-14.1.2/doc"))
-  ;; 动态获取 auctex 的安装目录
-  (with-eval-after-load 'info
-    (when-let ((auctex-dir (file-name-directory (locate-library "auctex.el")))
-               (doc-dir (expand-file-name "doc" auctex-dir)))
-      (add-to-list 'Info-additional-directory-list doc-dir)))
-  (setq TeX-output-dir ".LaTeXOut/")
-  ;; /并不是必须的但是在my-auctex-after-compilation-copy-pdf函数中要".LaTeXAuto/"这个值
-  (setq TeX-auto-local ".LaTeXAuto/")
-  ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
-  (setq TeX-style-private my/tex-el-dir)
-  ;; (setq TeX-auto-private "~/Documents/Notes/TeX/el")
-  ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
-
-  ;; (if (string-match "address" flyspell-tex-command-regexp)
-  ;;     (setq flyspell-tex-command-regexp flyspell-tex-command-regexp)
-  ;;   (setq flyspell-tex-command-regexp (concat (substring flyspell-tex-command-regexp 0 83) "\\|address\\|author\\|title\\|thanks\\|bibliography\\(style\\)?\\|email\\|setlist\\|newtheorem\\|usetikzlibrary" (substring flyspell-tex-command-regexp 83))))
-  ;; (put 'latex-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
-
-  :config
-  (setq TeX-parse-self t
-        TeX-auto-save t
-        TeX-command-extra-options "--shell-escape"
-        TeX-file-line-error t
-        TeX-error-overview-open-after-TeX-run t
-        TeX-source-correlate-mode t
-        TeX-source-correlate-method 'synctex
-        TeX-source-correlate-start-server t
-        TeX-view-program-selection '((output-pdf "Skim"))
-        TeX-view-program-list
-        '(("Skim" "/Applications/Skim.app/Contents/SharedSupport/displayline -b %n %o %b"))
-        TeX-electric-sub-and-superscript t
-        LaTeX-electric-left-right-brace t
-        TeX-PDF-mode t
-        TeX-clean-confirm nil
-        TeX-save-query nil)
-
-  (setq-default TeX-master nil)
-  (setq-default TeX-open-quote "``"
-                TeX-closed-quote "''")
-  (setq-default font-latex-fontify-script nil
-                font-latex-fontify-sectioning 'color)
-  (setq LaTeX-item-indent 0)
-  ;; (setq TeX-ispell-extend-skip-list t)
-
-  ;; (setf (cadr (assoc "ChkTeX" TeX-command-list)) "chktex -q -v6 -n2 -n3 -n9 -n18 %s")
-
-  ;; (add-hook 'find-file-hook
-  ;;           (lambda ()
-  ;;             (when (eq major-mode 'latex-mode)
-  ;;               (when (or (not (file-exists-p (buffer-file-name)))
-  ;;                         (eq TeX-master 'shared))
-  ;;                 (add-file-local-variable
-  ;;                  'TeX-engine
-  ;;                  (intern (completing-read "Add TeX-engine with value: "
-  ;;                                           (mapcar 'car (TeX-engine-alist))
-  ;;                                           nil nil nil nil "default"))))
-  ;;               (TeX-update-style t))))
-
-  ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
-  ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
-
-  ;; (advice-add 'TeX-command-master :before #'my/tex-update-engine-before-command)
-  ;; (advice-add 'TeX-command-run-all :before #'my/tex-update-engine-before-command)
-
-  (defun my/latex-mode-setup ()
-    "Custom setup for LaTeX mode."
-    (interactive)
-    (setq-local TeX-electric-math (cons "\\("  "\\)"))
-
-    ;; (local-set-key (kbd "<tab>") 'my/latex-tab)
-
-    (local-set-key (kbd "DEL") (lambda ()
-                                 (interactive)
-                                 (if (use-region-p)
-                                     (delete-region (region-beginning) (region-end))
-                                   (my/TeX--delete-pair))))
-
-    ;; (add-hook 'after-save-hook 'flyspell-buffer nil t)
-    ;; (setq flyspell-generic-check-word-predicate 'tex-mode-flyspell-verify)
-    ;; (setq-default ispell-parser 'tex)
-    ;; (my/translate-fullwidth-to-halfwidth)
-    (LaTeX-math-mode)
-    ;; (highlight-indent-guides-mode)
-    (visual-line-mode)
-    ;; (electric-pair-mode)
-    ;; (electric-indent-local-mode)
-    (turn-on-auto-fill)
-    ;; (turn-on-reftex)
-    ;; (predictive-mode)
-    ;; (flyspell-mode)
-    ;; (eglot-ensure)
-    (flymake-mode)
-    (yas-minor-mode)))
-
 (defgroup my-auctex-auto-engine nil
   "Auto choose TeX engine from buffer content."
   :group 'tex)
@@ -3149,12 +3044,114 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
 (defun my-auctex--apply-auto-engine-before (&rest _args)
   "Advice helper to refresh `TeX-engine' before AUCTeX commands run."
   (my-auctex-apply-auto-engine))
+#+end_src
 
-(with-eval-after-load 'tex
+**** AUCTeX
+
+#+begin_src emacs-lisp
+(use-package tex
+  :ensure auctex
+  :defer t
+  :mode ("\\.tex" . LaTeX-mode)
+  :hook (LaTeX-mode . my/latex-mode-setup)
+  :init
+  ;; (with-eval-after-load 'info
+  ;;   (add-to-list 'Info-additional-directory-list
+  ;;                "/Users/baojie/.emacs.d/elpa/auctex-14.1.2/doc"))
+  ;; 动态获取 auctex 的安装目录
+  (with-eval-after-load 'info
+    (when-let ((auctex-dir (file-name-directory (locate-library "auctex.el")))
+               (doc-dir (expand-file-name "doc" auctex-dir)))
+      (add-to-list 'Info-additional-directory-list doc-dir)))
+  (setq TeX-output-dir ".LaTeXOut/")
+  ;; /并不是必须的但是在my-auctex-after-compilation-copy-pdf函数中要".LaTeXAuto/"这个值
+  (setq TeX-auto-local ".LaTeXAuto/")
+  ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
+  (setq TeX-style-private my/tex-el-dir)
+  ;; (setq TeX-auto-private "~/Documents/Notes/TeX/el")
+  ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
+
+  ;; (if (string-match "address" flyspell-tex-command-regexp)
+  ;;     (setq flyspell-tex-command-regexp flyspell-tex-command-regexp)
+  ;;   (setq flyspell-tex-command-regexp (concat (substring flyspell-tex-command-regexp 0 83) "\\|address\\|author\\|title\\|thanks\\|bibliography\\(style\\)?\\|email\\|setlist\\|newtheorem\\|usetikzlibrary" (substring flyspell-tex-command-regexp 83))))
+  ;; (put 'latex-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
+
+  :config
+  (setq TeX-parse-self t
+        TeX-auto-save t
+        TeX-command-extra-options "--shell-escape"
+        TeX-file-line-error t
+        TeX-error-overview-open-after-TeX-run t
+        TeX-source-correlate-mode t
+        TeX-source-correlate-method 'synctex
+        TeX-source-correlate-start-server t
+        TeX-view-program-selection '((output-pdf "Skim"))
+        TeX-view-program-list
+        '(("Skim" "/Applications/Skim.app/Contents/SharedSupport/displayline -b %n %o %b"))
+        TeX-electric-sub-and-superscript t
+        LaTeX-electric-left-right-brace t
+        TeX-PDF-mode t
+        TeX-clean-confirm nil
+        TeX-save-query nil)
+
+  (setq-default TeX-master nil)
+  (setq-default TeX-open-quote "``"
+                TeX-closed-quote "''")
+  (setq-default font-latex-fontify-script nil
+                font-latex-fontify-sectioning 'color)
+  (setq LaTeX-item-indent 0)
+  ;; (setq TeX-ispell-extend-skip-list t)
+
+  ;; (setf (cadr (assoc "ChkTeX" TeX-command-list)) "chktex -q -v6 -n2 -n3 -n9 -n18 %s")
+
+  ;; (add-hook 'find-file-hook
+  ;;           (lambda ()
+  ;;             (when (eq major-mode 'latex-mode)
+  ;;               (when (or (not (file-exists-p (buffer-file-name)))
+  ;;                         (eq TeX-master 'shared))
+  ;;                 (add-file-local-variable
+  ;;                  'TeX-engine
+  ;;                  (intern (completing-read "Add TeX-engine with value: "
+  ;;                                           (mapcar 'car (TeX-engine-alist))
+  ;;                                           nil nil nil nil "default"))))
+  ;;               (TeX-update-style t))))
+
+  ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
+  ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
+
   (advice-add 'TeX-normal-mode :before #'my-auctex--apply-auto-engine-before)
   (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
-  (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before))
+  (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before)
 
+  (defun my/latex-mode-setup ()
+    "Custom setup for LaTeX mode."
+    (interactive)
+    (setq-local TeX-electric-math (cons "\\("  "\\)"))
+
+    ;; (local-set-key (kbd "<tab>") 'my/latex-tab)
+
+    (local-set-key (kbd "DEL") (lambda ()
+                                 (interactive)
+                                 (if (use-region-p)
+                                     (delete-region (region-beginning) (region-end))
+                                   (my/TeX--delete-pair))))
+
+    ;; (add-hook 'after-save-hook 'flyspell-buffer nil t)
+    ;; (setq flyspell-generic-check-word-predicate 'tex-mode-flyspell-verify)
+    ;; (setq-default ispell-parser 'tex)
+    ;; (my/translate-fullwidth-to-halfwidth)
+    (LaTeX-math-mode)
+    ;; (highlight-indent-guides-mode)
+    (visual-line-mode)
+    ;; (electric-pair-mode)
+    ;; (electric-indent-local-mode)
+    (turn-on-auto-fill)
+    ;; (turn-on-reftex)
+    ;; (predictive-mode)
+    ;; (flyspell-mode)
+    ;; (eglot-ensure)
+    (flymake-mode)
+    (yas-minor-mode)))
 
 ;; 编译后复制 PDF 文件
 (add-hook 'TeX-after-compilation-finished-functions
