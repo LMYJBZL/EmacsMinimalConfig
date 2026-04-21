@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-21 21:25:42 baojie>
+#+DATE: Time-stamp: <2026-04-21 22:01:03 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1041,7 +1041,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Window
 
 #+begin_src emacs-lisp
-(setq switch-to-buffer-obey-display-actions t)
+(setq switch-to-buffer-obey-display-actions nil)
 
 (setq display-buffer-alist
       '(("\\*TeX errors\\*"
@@ -1062,7 +1062,7 @@ Enables Emacs to remember the last location within a file upon reopening.
          (display-buffer-in-side-window)
          (side . bottom)
          (slot . 2)
-         (window-height . 0.2)
+         (window-height . 0.25)
          (dedicated . t))
 
         ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
@@ -1082,85 +1082,50 @@ Enables Emacs to remember the last location within a file upon reopening.
          (display-buffer-reuse-window display-buffer-at-bottom)
          (window-height . 0.25))
 
-        ((derived-mode . magit-mode)
+        ;; Magit 状态窗口：在当前选中窗口下方打开，不占用侧边区域
+        ((derived-mode . magit-status-mode)
          (display-buffer-reuse-window display-buffer-below-selected)
-         (window-height . 0.35))))
+         (window-height . 0.35)
+         (inhibit-same-window . nil))   ; 允许在当前窗口重用，但优先在下侧打开
+        ))
 
-;; (defun my-display-buffer-fit-window (window)
-;;   "Fit WINDOW to its buffer, with sane min/max limits."
-;;   (fit-window-to-buffer window
-;;                         (floor (* (frame-height) 0.4))
-;;                         4))
-;;
-;; (setq temp-buffer-resize-mode t)
-;; (setq temp-buffer-max-height (floor (* (frame-height) 0.4)))
-
-;; (use-package window
-;;   :ensure nil
-;;   :custom
-;;   (display-buffer-alist
-;;    `(("\\`\\*Async Shell Command\\*\\'"
-;;       (display-buffer-no-window))
-;;
-;;      ("\\`\\*\\(Warnings\\|Compile-Log\\|Org Links\\)\\*\\'"
-;;       (display-buffer-no-window)
-;;       (allow-no-window . t))
-;;
-;;      ("\\*\\(Org \\(Select\\|Note\\)\\|Agenda Commands\\)\\*"
-;;       (display-buffer-in-side-window)
-;;       (side . bottom)
-;;       (slot . 0)
-;;       (window-height . 0.3)
-;;       (dedicated . t)
-;;       (window-parameters . ((mode-line-format . none))))
-;;
-;;      ("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-;;       (display-buffer-in-side-window)
-;;       (side . bottom)
-;;       (slot . 1)
-;;       (window-height . 0.3)
-;;       (window-parameters . ((mode-line-format . none))))
-;;
-;;      ((derived-mode . magit-status-mode)
-;;       (display-buffer-reuse-window display-buffer-below-selected)
-;;       ))))
-
-;; Enabling `pixel-scroll-precision-mode' is unnecessary with emacs-mac, as
-;; this version of Emacs natively supports smooth scrolling.
-;; https://bitbucket.org/mituharu/emacs-mac/commits/65c6c96f27afa446df6f9d8eff63f9cc012cc738
-;; (setq pixel-scroll-precision-use-momentum nil) ; Precise/smoother scrolling
-;; (pixel-scroll-precision-mode 1)
-
-;; Track changes in the window configuration, allowing undoing actions such as
-;; closing windows.
-(setq winner-boring-buffers '("*Completions*"
-                              "*Minibuf-0*"
-                              "*Minibuf-1*"
-                              "*Minibuf-2*"
-                              "*Minibuf-3*"
-                              "*Minibuf-4*"
-                              "*Compile-Log*"
-                              "*inferior-lisp*"
-                              "*Fuzzy Completions*"
-                              "*Apropos*"
-                              "*Help*"
-                              "*cvs*"
-                              "*Buffer List*"
-                              "*Ibuffer*"
-                              "*esh command on file*"))
+;; 3. Winner 模式：保存/撤销窗口布局，但忽略侧边窗口的 buffer
+(setq winner-boring-buffers
+      '("*Completions*"
+        "*Minibuf-0*" "*Minibuf-1*" "*Minibuf-2*" "*Minibuf-3*" "*Minibuf-4*"
+        "*Compile-Log*"
+        "*inferior-lisp*"
+        "*Fuzzy Completions*"
+        "*Apropos*"
+        "*Help*"
+        "*cvs*"
+        "*Buffer List*"
+        "*Ibuffer*"
+        "*esh command on file*"
+        "*TeX errors*"      ;; 新增：避免 winner-undo 恢复被关闭的底部窗口
+        "*TeX Help*"
+        "*Warnings*"
+        "*Embark Collect*"
+        "*xref*"
+        "*grep*"
+        "*Occur*"
+        "*compilation*"))
 (add-hook 'after-init-hook #'winner-mode)
 
-;; The native border "uses" a pixel of the fringe on the rightmost
-;; splits, whereas `window-divider-mode' does not.
+;; 4. 窗口分割线（可拖拽调整大小，视觉美化）
 (setq window-divider-default-bottom-width 0
       window-divider-default-places t
       window-divider-default-right-width 1)
-
-;; Window dividers separate windows visually. Window dividers are bars that can
-;; be dragged with the mouse, thus allowing you to easily resize adjacent
-;; windows.
-;; https://www.gnu.org/software/emacs/manual/html_node/emacs/Window-Dividers.html
 (add-hook 'after-init-hook #'window-divider-mode)
+
+;; 5. 可选：临时 buffer 自动调整大小（对非 side-window 的 *Help* 等有效）
+;;    若你主要使用 side window，此功能影响不大，保留默认即可
+;; (setq temp-buffer-resize-mode t)
+;; (setq temp-buffer-max-height (floor (* (frame-height) 0.4)))
+
+;; 6. 可选：平滑滚动（macOS 下若使用 emacs-mac 版则无需启用）
+;; (setq pixel-scroll-precision-use-momentum nil)
+;; (pixel-scroll-precision-mode 1)
 #+end_src
 
 ** Cursor
