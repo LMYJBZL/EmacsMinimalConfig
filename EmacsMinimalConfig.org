@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-21 23:13:02 baojie>
+#+DATE: Time-stamp: <2026-04-22 08:44:22 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1036,6 +1036,11 @@ Enables Emacs to remember the last location within a file upon reopening.
 
 (setq pop-up-frames nil)
 (setq ns-pop-up-frames nil)
+
+(setq visual-line-fringe-indicators '(left-curly-arrow right-curly-arrow))
+
+(global-visual-wrap-prefix-mode 1)
+(setopt visual-wrap-extra-indent 2)
 #+end_src
 
 ** Window
@@ -1085,7 +1090,7 @@ Enables Emacs to remember the last location within a file upon reopening.
         ;; Magit 状态窗口：在当前选中窗口下方打开，不占用侧边区域
         ((derived-mode . magit-status-mode)
          (display-buffer-reuse-window display-buffer-below-selected)
-         (window-height . 0.35)
+         (window-height . 0.33)
          (inhibit-same-window . nil))   ; 允许在当前窗口重用，但优先在下侧打开
         ))
 
@@ -1094,14 +1099,10 @@ Enables Emacs to remember the last location within a file upon reopening.
     (when help-win
       (let ((current (window-total-width help-win))
             (target 76))
-        (window-resize
-         help-win
-         (- target current)
-         t))))) ;; t = 横向调整
+        (window-resize help-win (- target current) t))))) ;; t = 横向调整
 
 (add-hook 'window-configuration-change-hook
           #'my/tex-help-fixed-width)
-
 
 ;; 3. Winner 模式：保存/撤销窗口布局，但忽略侧边窗口的 buffer
 (setq winner-boring-buffers
@@ -1157,6 +1158,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 
 ;; Reduce rendering/line scan work by not rendering cursors or regions in
 ;; non-focused windows.
+(setq-default cursor-in-non-selected-windows nil)
 (setq highlight-nonselected-windows nil)
 #+end_src
 
@@ -2532,75 +2534,65 @@ Need-to-have for programmers.
 (require 'ox-latex)
 
 (use-package org
-  :defer t
-  :ensure nil
+  :ensure nil                         ; 内置包无需安装
   :mode ("\\.org\\'" . org-mode)
-  :hook (org-mode . org-indent-mode)
+  :hook ((org-mode . org-indent-mode)
+         (org-mode . visual-line-mode)
+         (org-mode . (lambda () (add-hook 'before-save-hook #'time-stamp nil t))))
   :bind (("C-c l" . org-store-link)
          ("C-c a" . org-agenda)
          ("C-c c" . org-capture))
+  :custom
+  ;; 基础路径
+  (org-directory my/org-dir)
+  (org-default-notes-file (expand-file-name "mygtd.org" my/org-dir))
+  (org-agenda-files (list (expand-file-name "diary-by-months/" org-directory)
+                          (expand-file-name "src/" org-directory)))
+
+  ;; 外观与性能
+  (org-startup-folded t)
+  (org-ellipsis "⇲")
+  (org-hide-leading-stars t)
+  (org-hide-emphasis-markers t)
+  (org-pretty-entities t)
+  (org-use-sub-superscripts nil)      ; 禁用 ^/_ 下标/上标
+
+  ;; 编辑行为
+  (org-special-ctrl-a/e t)
+  (org-insert-heading-respect-content t)
+  (org-fold-catch-invisible-edits 'show-and-error)
+  (org-auto-align-tags nil)
+  (org-tags-column 0)
+
+  ;; TODO 状态
+  (org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d)")
+                       (sequence "WAITING(w@/!)" "HOLD(h@/!)" "|" "CANCELLED(c@/!)")))
+  (org-todo-keyword-faces '(("TODO"    . (:foreground "red" :weight bold))
+                            ("DONE"    . (:foreground "forest green" :weight bold))
+                            ("WAITING" . (:foreground "orange" :weight bold))
+                            ("HOLD"    . (:foreground "magenta" :weight bold))
+                            ("CANCELLED" . (:foreground "forest green" :weight bold))))
+  (org-enforce-todo-dependencies t)
+
+  ;; 代码块
+  (org-src-fontify-natively t)
+  (org-src-tab-acts-natively t)
+  (org-src-preserve-indentation t)
+  (org-src-window-setup 'split-window-below)   ; 按需取消注释即可启用
+
+  ;; 导出
+  (org-export-backends '(ascii html icalendar latex odt md))
+  (org-confirm-babel-evaluate nil)
+
   :config
-  (setopt org-export-backends '(ascii html icalendar latex odt md))
-  (setq
-   ;; Start collapsed for speed
-   org-startup-folded t
-
-   ;; Edit settings
-   org-hide-leading-stars t
-   org-auto-align-tags nil
-   org-tags-column 0
-   org-fold-catch-invisible-edits 'show-and-error
-   org-special-ctrl-a/e t
-   org-insert-heading-respect-content t
-
-   ;; Org styling, hide markup etc.
-   org-hide-emphasis-markers t
-   org-pretty-entities t
-   org-use-sub-superscripts nil ;; We want the above but no _ subscripts ^ superscripts
-   )
-  (setq org-ellipsis "⇲")
-
-  ;; Load babel only when org loads
+  ;; 加载 Babel 语言支持
   (org-babel-do-load-languages
    'org-babel-load-languages
    '((python . t)
      (emacs-lisp . t)
      (latex . t)
      (org . t)
-     (shell . t)))
-  (setq org-confirm-babel-evaluate nil)
-  (add-hook 'org-mode-hook (lambda ()
-                             (add-hook 'before-save-hook 'time-stamp nil t)))
-
-  ;; (setq org-directory (expand-file-name "~/Documents/Notes/org"))
-  ;; (setq org-default-notes-file (concat org-directory "/mygtd.org"))
-  (setq org-directory my/org-dir)
-  (setq org-default-notes-file (expand-file-name "mygtd.org" my/org-dir))
-  ;; (setq org-agenda-files '("~/Documents/org/diary-by-months/"
-  ;;                          "~/Documents/org/src/"))
-  (setq org-agenda-files (list (expand-file-name "diary-by-months/" org-directory)
-                               (expand-file-name "src/" org-directory)))
-
-  (setq org-todo-keywords
-        (quote ((sequence "TODO(t)" "|" "DONE(d)")
-                (sequence "WAITING(w@/!)" "HOLD(h@/!)" "|" "CANCELLED(c@/!)"))))
-
-  (setq-default org-enforce-todo-dependencies t)
-
-  (setq-default org-todo-keyword-faces
-                (quote (("TODO" :foreground "red" :weight bold)
-                        ("DONE" :foreground "forest green" :weight bold)
-                        ("WAITING" :foreground "orange" :weight bold)
-                        ("HOLD" :foreground "magenta" :weight bold)
-                        ("CANCELLED" :foreground "forest green" :weight bold)
-                        ("MEETING" :foreground "forest green" :weight bold)
-                        ("PHONE" :foreground "forest green" :weight bold))))
-  )
-
-(setq org-src-fontify-natively t)
-(setq org-src-tab-acts-natively t)
-(setq org-src-preserve-indentation t)
-;; (setq org-src-window-setup 'split-window-below)
+     (shell . t))))
 #+end_src
 
 *** YAML
@@ -3312,7 +3304,7 @@ are defining or executing a macro."
 ;; =============================================================================
 ;; 文本操作
 (keymap-global-set "M-`" #'menu-bar-mode)                  ; 切换菜单栏
-(keymap-global-set "M-j" #'duplicate-line)                 ; Emacs 30+ 内置重复行
+;; (keymap-global-set "M-j" #'duplicate-line)                 ; Emacs 30+ 内置重复行
 
 ;; 删除操作
 (keymap-global-set "M-z" #'zap-up-to-char)                 ; 删除到字符
