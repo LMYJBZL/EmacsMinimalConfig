@@ -2246,11 +2246,30 @@ permissions 为t,那么你还能编辑文件属性).
   ;;                     :require-match mustmatch
   ;;                     :predicate pred))))
 
+  (defun my/recentf-display-name (file-path duplicate-table)
+    "根据 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
+    (let* ((base-name (file-name-nondirectory file-path))
+           (dir-name (directory-file-name
+                      (file-name-directory (abbreviate-file-name file-path)))))
+      (if (> (gethash base-name duplicate-table 0) 1)
+          (format "%s    <%s>" base-name (file-name-nondirectory dir-name))
+        base-name)))
+
   (defun my-consult--source-recentf-items ()
-    "为 Consult 生成 recentf 项目"
+    "为 Consult 生成 recentf 项目。"
     (let ((ht (consult--buffer-file-hash))
+          (duplicate-table (make-hash-table :test #'equal))
           file-name-handler-alist
           items)
+      (dolist (file recentf-list)
+        (let ((file-path (if (stringp file) file (cdr file))))
+          (when (and file-path (eq (aref file-path 0) ?~))
+            (setq file-path (expand-file-name file-path)))
+          (unless (or (null file-path) (gethash file-path ht))
+            (puthash (file-name-nondirectory file-path)
+                     (1+ (gethash (file-name-nondirectory file-path)
+                                  duplicate-table 0))
+                     duplicate-table))))
       (dolist (file recentf-list)
         ;; 修复：recentf-list 直接是文件路径字符串，不是 cons cell
         (let ((file-path (if (stringp file) file (cdr file))))
@@ -2259,7 +2278,7 @@ permissions 为t,那么你还能编辑文件属性).
             (setq file-path (expand-file-name file-path)))
           ;; 跳过已在缓冲区的文件
           (unless (or (null file-path) (gethash file-path ht))
-            (push (propertize (file-name-nondirectory file-path)
+            (push (propertize (my/recentf-display-name file-path duplicate-table)
                               'multi-category `(file . ,file-path))
                   items))))
       (nreverse items)))
