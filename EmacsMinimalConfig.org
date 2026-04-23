@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-23 21:04:07 baojie>
+#+DATE: Time-stamp: <2026-04-23 21:42:28 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -3332,6 +3332,20 @@ are defining or executing a macro."
     (unless (or defining-kbd-macro
                 executing-kbd-macro)
       (funcall-interactively quit))))
+
+;; Make the physical Escape key behave like a lightweight cancel key in GUI
+;; contexts, without changing how Meta key sequences are interpreted.
+(keymap-global-set "<escape>" #'keyboard-escape-quit)
+
+(dolist (map (list minibuffer-local-map
+                   minibuffer-local-ns-map
+                   minibuffer-local-completion-map
+                   minibuffer-local-must-match-map
+                   minibuffer-local-filename-completion-map))
+  (define-key map [escape] #'keyboard-escape-quit))
+
+(with-eval-after-load 'isearch
+  (define-key isearch-mode-map [escape] #'isearch-cancel))
 
 ;; =============================================================================
 ;; 解除不常用的快捷键定义，避免冲突
