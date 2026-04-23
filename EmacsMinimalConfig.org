@@ -2246,39 +2246,87 @@ permissions 为t,那么你还能编辑文件属性).
   ;;                     :require-match mustmatch
   ;;                     :predicate pred))))
 
-  (defun my/recentf-display-name (file-path duplicate-table)
-    "根据 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
-    (let* ((base-name (file-name-nondirectory file-path))
-           (dir-name (directory-file-name
-                      (file-name-directory (abbreviate-file-name file-path)))))
+  (defun my/recentf-normalize-path (file)
+    "将 recentf 中的 FILE 规范化为绝对路径字符串。"
+    (let ((file-path (if (stringp file) file (cdr file))))
+      (when (and (stringp file-path) (not (string-empty-p file-path)))
+        (expand-file-name file-path))))
+
+  (defun my/recentf-unique-directory-suffix (file-path files)
+    "为 FILE-PATH 生成相对 FILES 中同名文件的最短唯一路径后缀。"
+    (let* ((target-dir
+            (split-string
+             (directory-file-name
+              (file-name-directory (abbreviate-file-name file-path)))
+             "/" t))
+           (same-name-files
+            (seq-filter
+             (lambda (other)
+               (string= (file-name-nondirectory other)
+                        (file-name-nondirectory file-path)))
+             files))
+           (depth 1)
+           suffix)
+      (while (and (<= depth (length target-dir)) (not suffix))
+        (let ((candidate
+               (mapconcat #'identity
+                          (last target-dir depth)
+                          "/")))
+          (if (seq-every-p
+               (lambda (other)
+                 (or (string= other file-path)
+                     (not (string=
+                           candidate
+                           (mapconcat
+                            #'identity
+                            (last
+                             (split-string
+                              (directory-file-name
+                               (file-name-directory
+                                (abbreviate-file-name other)))
+                              "/" t)
+                             depth)
+                            "/")))))
+               same-name-files)
+              (setq suffix candidate)
+            (setq depth (1+ depth)))))
+      (or suffix
+          (directory-file-name
+           (file-name-directory (abbreviate-file-name file-path))))))
+
+  (defun my/recentf-display-name (file-path files duplicate-table)
+    "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
+    (let ((base-name (file-name-nondirectory file-path)))
       (if (> (gethash base-name duplicate-table 0) 1)
-          (format "%s    <%s>" base-name (file-name-nondirectory dir-name))
+          (format "%s    <%s>"
+                  base-name
+                  (my/recentf-unique-directory-suffix file-path files))
         base-name)))
 
   (defun my-consult--source-recentf-items ()
     "为 Consult 生成 recentf 项目。"
     (let ((ht (consult--buffer-file-hash))
           (duplicate-table (make-hash-table :test #'equal))
+          normalized-files
           file-name-handler-alist
           items)
       (dolist (file recentf-list)
-        (let ((file-path (if (stringp file) file (cdr file))))
-          (when (and file-path (eq (aref file-path 0) ?~))
-            (setq file-path (expand-file-name file-path)))
+        (let ((file-path (my/recentf-normalize-path file)))
           (unless (or (null file-path) (gethash file-path ht))
+            (push file-path normalized-files)
             (puthash (file-name-nondirectory file-path)
                      (1+ (gethash (file-name-nondirectory file-path)
                                   duplicate-table 0))
                      duplicate-table))))
       (dolist (file recentf-list)
         ;; 修复：recentf-list 直接是文件路径字符串，不是 cons cell
-        (let ((file-path (if (stringp file) file (cdr file))))
-          ;; 展开缩写路径
-          (when (and file-path (eq (aref file-path 0) ?~))
-            (setq file-path (expand-file-name file-path)))
+        (let ((file-path (my/recentf-normalize-path file)))
           ;; 跳过已在缓冲区的文件
           (unless (or (null file-path) (gethash file-path ht))
-            (push (propertize (my/recentf-display-name file-path duplicate-table)
+            (push (propertize (my/recentf-display-name
+                               file-path
+                               normalized-files
+                               duplicate-table)
                               'multi-category `(file . ,file-path))
                   items))))
       (nreverse items)))
