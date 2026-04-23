@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-23 19:35:37 baojie>
+#+DATE: Time-stamp: <2026-04-23 21:04:07 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -116,6 +116,7 @@ Note that this should end with a directory separator.")
 
 #+begin_src emacs-lisp
 (setq user-emacs-directory "~/.emacs.d/")
+
 (defvar my/cache-dir
   (expand-file-name "var/" user-emacs-directory))
 (make-directory my/cache-dir t)
@@ -125,42 +126,6 @@ Note that this should end with a directory separator.")
 
 (setq custom-file (expand-file-name "custom.el" my/cache-dir))
 
-;;; ============================================================================
-;;; 用户自定义路径常量
-;;; ============================================================================
-
-(defconst my/notes-dir
-  (expand-file-name "~/Documents/Notes")
-  "根笔记目录。")
-
-(defconst my/tex-dir
-  (expand-file-name "TeX" my/notes-dir)
-  "LaTeX 相关资源根目录。")
-
-(defconst my/tex-cls-dir
-  (expand-file-name "cls" my/tex-dir)
-  "LaTeX 文档类目录。")
-
-(defconst my/tex-assets-dir
-  (expand-file-name "assets" my/tex-dir)
-  "LaTeX 图片/资源目录。")
-
-(defconst my/tex-el-dir
-  (expand-file-name "el" my/tex-dir)
-  "AUCTeX 私有样式目录。")
-
-(defconst my/tex-bib-dir
-  (expand-file-name "bib" my/tex-dir)
-  "BibTeX 数据库目录。")
-
-(defconst my/org-dir
-  (expand-file-name "org" my/notes-dir)
-  "Org-mode 文件目录。")
-
-(defconst my/icloud-snippets-dir
-  "~/Library/Mobile Documents/com~apple~cloudDocs/snippets"
-  "iCloud 中的 yasnippet 片段目录（注意含空格）。")
-
 (setq savehist-file (expand-file-name "history" my/cache-dir)
       recentf-save-file (expand-file-name "recentf" my/cache-dir)
       save-place-file (expand-file-name "saveplace" my/cache-dir)
@@ -169,8 +134,12 @@ Note that this should end with a directory separator.")
       url-history-file (expand-file-name "url/history" my/cache-dir)
       backup-directory-alist `(("." . ,(expand-file-name "backup/" my/cache-dir))))
 
-;; Prefer loading newer compiled files
 (setq load-prefer-newer t)
+
+;;; ============================================================================
+;;; 用户自定义路径常量
+;;; ============================================================================
+
 
 (defvar minimal-emacs-load-compiled-init-files nil
   "If non-nil, attempt to load byte-compiled .elc for init files.
@@ -462,30 +431,6 @@ this stage of initialization."
             #'minimal-emacs--startup-load-user-init-file)
 #+end_src
 
-** Ui Elements
-
-#+begin_src emacs-lisp
-(setq frame-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
-      icon-title-format '("" "%b - (ര̀ᴗര́)و ̑̑"))
-
-;; Disable startup screens and messages
-(setq inhibit-splash-screen t)
-(setq default-frame-scroll-bars 'right)
-
-(when (bound-and-true-p tooltip-mode)
-  (tooltip-mode -1))
-
-(setq tooltip-hide-delay 20)    ; Time in seconds before a tooltip disappears (default: 10)
-(setq tooltip-delay 0.4)        ; Delay before showing a tooltip after mouse hover (default: 0.7)
-(setq tooltip-short-delay 0.08) ; Delay before showing a short tooltip (Default: 0.1)
-(tooltip-mode 1)
-
-;; Disable GUIs because they are inconsistent across systems, desktop
-;; environments, and themes, and they don't match the look of Emacs.
-(setq use-file-dialog nil)
-(setq use-dialog-box nil)
-#+end_src
-
 ** Security
 
 #+begin_src emacs-lisp
@@ -563,6 +508,38 @@ this stage of initialization."
 ** Before Package
 
 #+begin_src emacs-lisp
+(defconst my/notes-dir
+  (expand-file-name "~/Documents/Notes")
+  "根笔记目录。")
+
+(defconst my/tex-dir
+  (expand-file-name "TeX" my/notes-dir)
+  "LaTeX 相关资源根目录。")
+
+(defconst my/tex-cls-dir
+  (expand-file-name "cls" my/tex-dir)
+  "LaTeX 文档类目录。")
+
+(defconst my/tex-assets-dir
+  (expand-file-name "assets" my/tex-dir)
+  "LaTeX 图片/资源目录。")
+
+(defconst my/tex-el-dir
+  (expand-file-name "el" my/tex-dir)
+  "AUCTeX 私有样式目录。")
+
+(defconst my/tex-bib-dir
+  (expand-file-name "bib" my/tex-dir)
+  "BibTeX 数据库目录。")
+
+(defconst my/org-dir
+  (expand-file-name "org" my/notes-dir)
+  "Org-mode 文件目录。")
+
+(defconst my/icloud-snippets-dir
+  "~/Library/Mobile Documents/com~apple~cloudDocs/snippets"
+  "iCloud 中的 yasnippet 片段目录（注意含空格）。")
+
 (setq user-full-name "Baojie Jiang"
       user-mail-address "jiangbaojie@gmail.com")
 
@@ -597,19 +574,18 @@ this stage of initialization."
            (not (bound-and-true-p byte-compile-current-file))
            (not (or (fboundp 'straight-use-package)
                     (fboundp 'elpaca))))
-
-;; Initialize and refresh package contents again if needed
-(package-initialize)
-(unless package-archive-contents
-  (package-refresh-contents))
-(unless (package-installed-p 'use-package)
-  (package-install 'use-package))
-(require 'use-package))
+  (require 'package)
+  (package-initialize)
+  (unless (package-installed-p 'use-package)
+    (unless package-archive-contents
+      (package-refresh-contents))
+    (package-install 'use-package))
+  (require 'use-package))
 #+end_src
 
 ** Compile-angel
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
 ;; Native compilation enhances Emacs performance by converting Elisp code into
 ;; native machine code, resulting in faster execution and improved
 ;; responsiveness.
@@ -724,11 +700,11 @@ this stage of initialization."
       show-paren-when-point-in-periphery nil)
 ;; (setq show-paren-style 'mixed)
 
-(dolist (mode '(prog-mode text-mode LaTeX-mode))
-  (add-hook (intern (format "%s-hook" mode))
-            (lambda ()
-              (modify-syntax-entry ?< ".")
-              (modify-syntax-entry ?> "."))))
+;; (dolist (mode '(prog-mode text-mode LaTeX-mode))
+;;   (add-hook (intern (format "%s-hook" mode))
+;;             (lambda ()
+;;               (modify-syntax-entry ?< ".")
+;;               (modify-syntax-entry ?> "."))))
 #+end_src
 
 ** Buffer Management
@@ -1043,6 +1019,22 @@ Enables Emacs to remember the last location within a file upon reopening.
 (setopt visual-wrap-extra-indent 2)
 #+end_src
 
+** Ui Elements
+
+#+begin_src emacs-lisp
+(setq frame-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
+      icon-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
+      inhibit-splash-screen t
+      default-frame-scroll-bars 'right
+      use-file-dialog nil
+      use-dialog-box nil
+      tooltip-hide-delay 20
+      tooltip-delay 0.4
+      tooltip-short-delay 0.08)
+
+(tooltip-mode 1)
+#+end_src
+
 ** Window
 
 #+begin_src emacs-lisp
@@ -1268,9 +1260,10 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Dired
 
 #+begin_src emacs-lisp
-(setq dired-use-ls-dired t
-      insert-directory-program "gls"
-      dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first --color=always")
+(when-let ((gls (executable-find "gls")))
+  (setq dired-use-ls-dired t
+        insert-directory-program gls
+        dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first --color=always"))
 
 (setq dired-free-space nil
       dired-dwim-target t  ; Propose a target for intelligent moving/copying
@@ -1471,13 +1464,13 @@ permissions 为t,那么你还能编辑文件属性).
 
 ;; (advice-remove 'string-width #'my/completion-safe-string-width)
 
-(defun my/completion-safe-string-width (orig &rest args)
-  (let ((str (car args)))
-    (if (stringp str)
-        (apply orig args)
-      0)))
-
-(advice-add 'string-width :around #'my/completion-safe-string-width)
+;; (defun my/completion-safe-string-width (orig &rest args)
+;;   (let ((str (car args)))
+;;     (if (stringp str)
+;;         (apply orig args)
+;;       0)))
+;;
+;; (advice-add 'string-width :around #'my/completion-safe-string-width)
 #+end_src
 
 ** Eglot
@@ -1749,28 +1742,32 @@ permissions 为t,那么你还能编辑文件属性).
 
 #+begin_src emacs-lisp
 (when (display-graphic-p)
-  (set-face-attribute 'default nil
-                      :font (font-spec :family "Aporetic Sans Mono" :size 13))
-  (set-face-attribute 'fixed-pitch nil
-                      :font (font-spec :family "Aporetic Sans Mono"))
-  (set-face-attribute 'variable-pitch nil
-                      :font (font-spec :family "Aporetic Serif Mono"))
-  (set-face-attribute 'line-number nil
-                      :font "JetBrains Mono NL")
-  (set-face-attribute 'line-number-current-line nil
-                      :font (font-spec :family "JetBrains Mono NL" :weight 'bold))
-  (set-face-attribute 'mode-line-active nil
-                      :font (font-spec :family "Aporetic Serif Mono" :weight 'bold))
-  (set-face-attribute 'mode-line-inactive nil
-                      :font "Aporetic Serif Mono")
-  (set-face-attribute 'bold nil
-                      :font (font-spec :family "Aporetic Sans Mono" :weight 'bold))
-  (set-face-attribute 'italic nil
-                      :font (font-spec :family "Aporetic Sans Mono"))
+  (when (find-font (font-spec :family "Aporetic Sans Mono"))
+    (set-face-attribute 'default nil
+                        :font (font-spec :family "Aporetic Sans Mono" :size 13))
+    (set-face-attribute 'fixed-pitch nil
+                        :font (font-spec :family "Aporetic Sans Mono"))
+    (set-face-attribute 'bold nil
+                        :font (font-spec :family "Aporetic Sans Mono" :weight 'bold))
+    (set-face-attribute 'italic nil
+                        :font (font-spec :family "Aporetic Sans Mono")))
 
-  (dolist (charset '(han kana symbol cjk-misc bopomofo))
-    (set-fontset-font (frame-parameter nil 'font)
-                      charset (font-spec :family "等距更纱黑体 SC"))))
+  (when (find-font (font-spec :family "Aporetic Serif Mono"))
+    (set-face-attribute 'variable-pitch nil
+                        :font (font-spec :family "Aporetic Serif Mono"))
+    (set-face-attribute 'mode-line-active nil
+                        :font (font-spec :family "Aporetic Serif Mono" :weight 'bold))
+    (set-face-attribute 'mode-line-inactive nil
+                        :font "Aporetic Serif Mono"))
+
+  (when (find-font (font-spec :family "JetBrains Mono NL"))
+    (set-face-attribute 'line-number nil :font "JetBrains Mono NL")
+    (set-face-attribute 'line-number-current-line nil
+                        :font (font-spec :family "JetBrains Mono NL" :weight 'bold)))
+
+  (when (find-font (font-spec :family "等距更纱黑体 SC"))
+    (dolist (charset '(han kana symbol cjk-misc bopomofo))
+      (set-fontset-font t charset (font-spec :family "等距更纱黑体 SC")))))
 
 ;; (dolist (charset '(han kana symbol cjk-misc bopomofo))
 ;;   (set-fontset-font (frame-parameter nil 'font)
@@ -2079,8 +2076,6 @@ permissions 为t,那么你还能编辑文件属性).
   (add-hook 'input-method-activate-hook #'my/rime-refresh-cursor-color)
   (add-hook 'input-method-inactivate-hook #'my/rime-refresh-cursor-color)
   (add-hook 'window-selection-change-functions #'my/rime-refresh-cursor-color)
-  (add-hook 'after-make-frame-functions #'my/init-new-frame-cursor-color)
-
 
   ;; 新 frame 创建时，强制应用当前正确的颜色（防止 default-frame-alist 被其他包覆盖）
   (defun my/init-new-frame-cursor-color (frame)
@@ -2117,7 +2112,9 @@ permissions 为t,那么你还能编辑文件属性).
 (use-package whitespace
   :ensure nil
   :defer t
-  :hook (before-save-hook . whitespace-cleanup))
+  :hook (prog-mode . (lambda ()
+                       (add-hook 'before-save-hook #'whitespace-cleanup nil t))))
+
 #+end_src
 
 ** Electric Pair
@@ -2235,19 +2232,19 @@ permissions 为t,那么你还能编辑文件属性).
    :preview-key '(:debounce 0.4 any))
   (setq consult-narrow-key "<")
 
-  (setq read-file-name-function #'consult-find-file-with-preview)
+  ;; (setq read-file-name-function #'consult-find-file-with-preview)
 
-  (defun consult-find-file-with-preview (prompt &optional dir default mustmatch initial pred)
-    (interactive)
-    (let ((default-directory (or dir default-directory))
-          (minibuffer-completing-file-name t))
-      (substitute-in-file-name
-       (consult--read #'read-file-name-internal
-                      :state (consult--file-preview)
-                      :prompt prompt
-                      :initial (abbreviate-file-name default-directory)
-                      :require-match mustmatch
-                      :predicate pred))))
+  ;; (defun consult-find-file-with-preview (prompt &optional dir default mustmatch initial pred)
+  ;;   (interactive)
+  ;;   (let ((default-directory (or dir default-directory))
+  ;;         (minibuffer-completing-file-name t))
+  ;;     (substitute-in-file-name
+  ;;      (consult--read #'read-file-name-internal
+  ;;                     :state (consult--file-preview)
+  ;;                     :prompt prompt
+  ;;                     :initial (abbreviate-file-name default-directory)
+  ;;                     :require-match mustmatch
+  ;;                     :predicate pred))))
 
   (defun my-consult--source-recentf-items ()
     "为 Consult 生成 recentf 项目"
@@ -3038,7 +3035,8 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
       (when (or (not valid)
                 (not (equal current (symbol-name engine))))
         (my-auctex--write-engine-to-local-variables engine variables bounds)
-        (setq-local TeX-engine engine)))))
+        (setq-local TeX-engine engine)
+        (set-buffer-modified-p t)))))
 
 (defun my-auctex--apply-auto-engine-before (&rest _args)
   "Advice helper to refresh `TeX-engine' before AUCTeX commands run."
@@ -3084,14 +3082,16 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
         TeX-source-correlate-mode t
         TeX-source-correlate-method 'synctex
         TeX-source-correlate-start-server t
-        TeX-view-program-selection '((output-pdf "Skim"))
-        TeX-view-program-list
-        '(("Skim" "/Applications/Skim.app/Contents/SharedSupport/displayline -b %n %o %b"))
         TeX-electric-sub-and-superscript t
         LaTeX-electric-left-right-brace t
         TeX-PDF-mode t
         TeX-clean-confirm nil
         TeX-save-query nil)
+
+  (when (file-exists-p "/Applications/Skim.app/Contents/SharedSupport/displayline")
+    (setq TeX-view-program-selection '((output-pdf "Skim"))
+          TeX-view-program-list
+          '(("Skim" "/Applications/Skim.app/Contents/SharedSupport/displayline -b %n %o %b"))))
 
   (setq-default TeX-master nil)
   (setq-default TeX-open-quote "``"
@@ -3118,13 +3118,14 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
   ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
 
-  (advice-add 'TeX-normal-mode :before #'my-auctex--apply-auto-engine-before)
+  (advice-add 'TeX-normal-mode :after #'my-auctex--apply-auto-engine-before) 
   (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
   (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before)
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
     (interactive)
+    (my-auctex-apply-auto-engine)
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
 
     (local-set-key (kbd "<tab>") #'my/latex-tab)
