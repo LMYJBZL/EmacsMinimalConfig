@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-22 08:44:22 baojie>
+#+DATE: Time-stamp: <2026-04-23 19:35:37 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -698,7 +698,7 @@ this stage of initialization."
 #+begin_src emacs-lisp
 ;; By default, Emacs "updates" its ui more often than it needs to
 (setq which-func-update-delay 1.0)
-(setq idle-update-delay which-func-update-delay)  ;; Obsolete in >= 30.1
+;; (setq idle-update-delay which-func-update-delay)  ;; Obsolete in >= 30.1
 
 (defalias #'view-hello-file #'ignore)  ; Never show the hello file
 
@@ -2640,49 +2640,77 @@ Need-to-have for programmers.
 #+end_src
 
 #+begin_src emacs-lisp
-(defun my/latex-tab ()
-  "Smart Tab for LaTeX:
-1. indent
-2. yasnippet expand/next field
-3. cdlatex-style cursor jump"
-  (interactive)
-  (let ((orig-point (point)))
-    ;; 正常缩进
+(defun my/latex-in-math-p ()
+  "Return non-nil when point is inside a LaTeX math environment."
+  (or (and (fboundp 'texmathp) (texmathp))
+      (and (fboundp 'TeX-in-math-mode) (TeX-in-math-mode))))
+
+(defun my/yas-active-snippets-p ()
+  "Return non-nil when there is an active yasnippet at point."
+  (cond
+   ((fboundp 'yas-active-snippets)
+    (yas-active-snippets))
+   ((fboundp 'yas--snippets-at-point)
+    (yas--snippets-at-point))
+   (t nil)))
+
+(defun my/latex-indent-dwim ()
+  "Indent current line and return non-nil when something changed."
+  (let ((orig-point (point))
+        (orig-indent (current-indentation)))
     (indent-for-tab-command)
-    ;; snippet 展开或跳转
-    (when (= orig-point (point))
-      (unless (yas-expand)
-        (when (yas--snippets-at-point)
-          (yas-next-field))))
-    ;;  cdlatex 风格跳转
-    (when (= orig-point (point))
-      (catch 'stop
-        ;; 初始前进一步（避免死循环）
-        (forward-char 1)
-        (while (re-search-forward "[ )}\n]\\|\\]" (point-max) t)
-          (forward-char -1)
-          (cond
-           ;; 遇到空格 → 停在第一个空格（或行首）
-           ((= (following-char) ?\ )
-            (if (not (bolp)) (forward-char 1))
-            (throw 'stop t))
-           ;; 遇到换行 → 停在行首/行尾（但 \\ 例外）
-           ((= (following-char) ?\n)
-            (if (and (bolp) (not (eobp)))
-                (throw 'stop t)
-              (if (equal "\\\\" (buffer-substring-no-properties
-                                 (- (point) 2) (point)))
-                  (forward-char 1)
-                (throw 'stop t))))
-           ;; 遇到右括号 → 根据前面字符判断停前还是停后
-           (t
-            (if (or (= (char-syntax (preceding-char)) ?\()
-                    (= (char-syntax (preceding-char)) ?\))
-                    (= (preceding-char) ?-))
-                (throw 'stop t)
-              (forward-char 1)
-              (if (looking-at "[^_^({[]")
-                  (throw 'stop t))))))))))
+    (or (/= orig-point (point))
+        (/= orig-indent (current-indentation)))))
+
+(defun my/latex-yas-dwim ()
+  "Expand a yasnippet or jump to its next field."
+  (or (and (bound-and-true-p yas-minor-mode)
+           (ignore-errors (yas-expand)))
+      (and (my/yas-active-snippets-p)
+           (ignore-errors
+             (yas-next-field)
+             t))))
+
+(defun my/latex-math-jump ()
+  "In the current LaTeX math environment, jump to each following `{'.
+Stop when leaving the current math environment."
+  (when (my/latex-in-math-p)
+    (let ((origin (point))
+          (math-end nil)
+          (found nil))
+      (save-excursion
+        (while (and (not (eobp))
+                    (my/latex-in-math-p))
+          (forward-char 1))
+        (setq math-end (point)))
+      (save-excursion
+        (while (and (not found)
+                    (search-forward "{" math-end t))
+          (let ((pos (1- (point))))
+            (when (and (> pos origin)
+                       (not (eq (char-before pos) ?\\)))
+              (setq found pos)))))
+      (cond
+       (found
+        (goto-char (1+ found))
+        t)
+       ((< origin math-end)
+        (goto-char math-end)
+        t)
+       (t nil)))))
+
+(defun my/latex-tab ()
+  "Smart `TAB' for LaTeX.
+
+Priority:
+1. Indent current line.
+2. Expand a yasnippet or jump to its next field.
+3. In math, jump through `{...}' arguments and finally leave math."
+  (interactive)
+  (unless (or (my/latex-indent-dwim)
+              (my/latex-yas-dwim)
+              (my/latex-math-jump))
+    (indent-for-tab-command)))
 #+end_src
 
 #+begin_src emacs-lisp
@@ -3099,7 +3127,9 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
     (interactive)
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
 
-    ;; (local-set-key (kbd "<tab>") 'my/latex-tab)
+    (local-set-key (kbd "<tab>") #'my/latex-tab)
+    (local-set-key (kbd "TAB") #'my/latex-tab)
+
 
     (local-set-key (kbd "DEL") (lambda ()
                                  (interactive)
