@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-23 21:42:28 baojie>
+#+DATE: Time-stamp: <2026-04-26 15:14:22 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -915,7 +915,9 @@ this stage of initialization."
   (setq auto-revert-interval 3)
   (setq auto-revert-remote-files nil)
   (setq auto-revert-use-notify t)
-  (setq auto-revert-avoid-polling nil))
+  ;; 当前设置了 (setq auto-revert-avoid-polling nil)，配合 auto-revert-use-notify t 时，nil 会强制回退到轮询，增加 CPU 消耗。
+  ;; (setq auto-revert-avoid-polling nil)
+  )
 #+end_src
 
 ** Recentf
@@ -941,14 +943,27 @@ this stage of initialization."
                "~/Documents/Notes/Review/"
               "~/Documents/Archives/Emacs/")))
 
-  (setq recentf-keep
-        (list (lambda (file)
-                (let ((full-path (expand-file-name file)))
-                  (cl-some (lambda (path)
-                             (if (directory-name-p path)
-                                 (string-prefix-p path full-path)
-                               (string= path full-path)))
-                           my/recentf-keep-paths))))))
+  ;; (setq recentf-keep
+  ;;       (list (lambda (file)
+  ;;               (let ((full-path (expand-file-name file)))
+  ;;                 (cl-some (lambda (path)
+  ;;                            (if (directory-name-p path)
+  ;;                                (string-prefix-p path full-path)
+  ;;                              (string= path full-path)))
+  ;;                          my/recentf-keep-paths)))))
+  
+(let ((path-hash (make-hash-table :test 'equal))
+      (prefix-list nil))
+  (dolist (p my/recentf-keep-paths)
+    (if (directory-name-p p)
+        (push (file-name-as-directory (expand-file-name p)) prefix-list)
+      (puthash (expand-file-name p) t path-hash)))
+  (setq recentf-keep (list (lambda (file)
+                             (let ((full (expand-file-name file)))
+                               (or (gethash full path-hash)
+                                   (cl-some (lambda (dir) (string-prefix-p dir full))
+                                            prefix-list)))))))
+  )
 #+end_src
 
 ** Saveplace
@@ -1159,7 +1174,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 ;; Enables faster scrolling. This may result in brief periods of inaccurate
 ;; syntax highlighting, which should quickly self-correct.
-(setq fast-but-imprecise-scrolling t)
+;; (setq fast-but-imprecise-scrolling t)
 
 ;; Move point to top/bottom of buffer before signaling a scrolling error.
 (setq scroll-error-top-bottom t)
@@ -3197,7 +3212,7 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
 
     (local-set-key (kbd "<tab>") #'my/latex-tab)
     (local-set-key (kbd "TAB") #'my/latex-tab)
-
+    (local-set-key (kbd "<S-s-mouse-1>") 'TeX-view)
 
     (local-set-key (kbd "DEL") (lambda ()
                                  (interactive)
