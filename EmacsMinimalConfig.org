@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-04-26 15:14:22 baojie>
+#+DATE: Time-stamp: <2026-04-27 12:35:05 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -935,34 +935,35 @@ this stage of initialization."
          "\\.\\(gz\\|png\\|jpg\\|elc\\|pdf\\)$"))
   :config
   (defconst my/recentf-keep-paths
-    (mapcar #'expand-file-name
+    (mapcar (lambda (path)
+              (let ((full-path (expand-file-name path)))
+                (if (directory-name-p path)
+                    (file-name-as-directory full-path)
+                  full-path)))
             '("~/Documents/Notes/课/当前学期/"
               "~/Documents/Notes/Slides/"
               "~/Documents/Notes/Papers/"
               "~/Documents/Notes/Misc/"
-               "~/Documents/Notes/Review/"
+              "~/Documents/Notes/Review/"
               "~/Documents/Archives/Emacs/")))
 
-  ;; (setq recentf-keep
-  ;;       (list (lambda (file)
-  ;;               (let ((full-path (expand-file-name file)))
-  ;;                 (cl-some (lambda (path)
-  ;;                            (if (directory-name-p path)
-  ;;                                (string-prefix-p path full-path)
-  ;;                              (string= path full-path)))
-  ;;                          my/recentf-keep-paths)))))
-  
-(let ((path-hash (make-hash-table :test 'equal))
-      (prefix-list nil))
-  (dolist (p my/recentf-keep-paths)
-    (if (directory-name-p p)
-        (push (file-name-as-directory (expand-file-name p)) prefix-list)
-      (puthash (expand-file-name p) t path-hash)))
-  (setq recentf-keep (list (lambda (file)
-                             (let ((full (expand-file-name file)))
-                               (or (gethash full path-hash)
-                                   (cl-some (lambda (dir) (string-prefix-p dir full))
-                                            prefix-list)))))))
+  (defconst my/recentf-keep-directories
+    (seq-filter #'directory-name-p my/recentf-keep-paths)
+    "Directories whose files should always stay in `recentf-list'.")
+
+  (defconst my/recentf-keep-files
+    (seq-remove #'directory-name-p my/recentf-keep-paths)
+    "Files that should always stay in `recentf-list'.")
+
+  (defun my/recentf-keep-p (file)
+    "Return non-nil when FILE should be kept by `recentf'."
+    (let ((full-path (expand-file-name file)))
+      (or (member full-path my/recentf-keep-files)
+          (cl-some (lambda (dir)
+                     (string-prefix-p dir full-path))
+                   my/recentf-keep-directories))))
+
+  (setq recentf-keep '(my/recentf-keep-p))
   )
 #+end_src
 
@@ -2309,14 +2310,23 @@ permissions 为t,那么你还能编辑文件属性).
           (directory-file-name
            (file-name-directory (abbreviate-file-name file-path))))))
 
+  ;; (defun my/recentf-display-name (file-path files duplicate-table)
+  ;;   "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
+  ;;   (let ((base-name (file-name-nondirectory file-path)))
+  ;;     (if (> (gethash base-name duplicate-table 0) 1)
+  ;;         (format "%s    <%s>"
+  ;;                 base-name
+  ;;                 (my/recentf-unique-directory-suffix file-path files))
+  ;;       base-name)))
+
   (defun my/recentf-display-name (file-path files duplicate-table)
-    "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
-    (let ((base-name (file-name-nondirectory file-path)))
-      (if (> (gethash base-name duplicate-table 0) 1)
-          (format "%s    <%s>"
-                  base-name
-                  (my/recentf-unique-directory-suffix file-path files))
-        base-name)))
+  "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
+  (let ((base-name (file-name-nondirectory file-path)))
+    (if (> (gethash base-name duplicate-table 0) 1)
+        (concat base-name "    <"
+                (my/recentf-unique-directory-suffix file-path files)
+                ">")
+      base-name)))
 
   (defun my-consult--source-recentf-items ()
     "为 Consult 生成 recentf 项目。"
@@ -2965,7 +2975,7 @@ Priority:
     (call-interactively 'backward-delete-char-untabify)))
 #+end_src
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
 (defgroup my-auctex-auto-engine nil
   "Auto choose TeX engine from buffer content."
   :group 'tex)
@@ -3125,6 +3135,129 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
   (my-auctex-apply-auto-engine))
 #+end_src
 
+#+begin_src emacs-lisp
+  (defconst my/auctex-chinese-styles
+    '("ctex" "ctexart" "ctexrep" "ctexbook" "ctexbeamer")
+    "Style names that imply a Chinese TeX engine is required.")
+
+  (defconst my/auctex-chinese-source-regexp
+    (concat
+     "^[[:space:]]*\\\\documentclass"
+     "\\(?:\\[[^]]*\\]\\)?"
+     "{\\(ctexart\\|ctexrep\\|ctexbook\\|ctexbeamer\\)}"
+     "\\|^[[:space:]]*\\\\usepackage"
+     "\\(?:\\[[^]]*\\]\\)?"
+     "{\\([^}]*,\\)?ctex\\(,[^}]*\\)?}")
+    "Regexp used as a fallback when AUCTeX style data is unavailable.")
+
+  (defconst my/auctex-chinese-style-el-regexp
+    "\"\\(ctex\\|ctexart\\|ctexrep\\|ctexbook\\|ctexbeamer\\)\""
+    "Regexp used to inspect generated AUCTeX style files for Chinese support.")
+
+  (defun my/auctex-file-uses-chinese-source-p (file)
+    "检查 FILE 源码中是否直接使用中文 LaTeX 支持。"
+    (when (and file (file-readable-p file))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (re-search-forward my/auctex-chinese-source-regexp nil t))))
+
+  (defun my/auctex-buffer-uses-chinese-source-p ()
+    "回退到源码检测当前缓冲区是否使用中文 LaTeX 支持。"
+    (or (my/auctex-file-uses-chinese-source-p (buffer-file-name))
+        (save-excursion
+          (goto-char (point-min))
+          (re-search-forward my/auctex-chinese-source-regexp nil t))))
+
+  (defun my/auctex-master-file-path ()
+    "返回当前 LaTeX 缓冲区对应 master 文件的绝对路径。"
+    (when-let ((buffer-file (buffer-file-name))
+               (buffer-dir (file-name-directory buffer-file)))
+      (cond
+       ((and (boundp 'TeX-master)
+             (stringp TeX-master))
+        (expand-file-name TeX-master buffer-dir))
+       ((fboundp 'TeX-master-file)
+        (when-let ((master (ignore-errors (TeX-master-file t))))
+          (when (stringp master)
+            (expand-file-name master buffer-dir)))))))
+
+  (defun my/auctex-master-uses-chinese-source-p ()
+    "检查 master 文件源码中是否使用中文 LaTeX 支持。"
+    (let ((master-file (my/auctex-master-file-path))
+          (buffer-file (buffer-file-name)))
+      (and master-file
+           (not (and buffer-file
+                     (file-equal-p master-file buffer-file)))
+           (my/auctex-file-uses-chinese-source-p master-file))))
+
+  (defun my/auctex-style-search-dirs ()
+    "返回应当检查的 AUCTeX 样式目录列表。"
+    (delete-dups
+     (delq nil
+           (append
+            (when-let ((buffer-file (buffer-file-name))
+                       (buffer-dir (file-name-directory buffer-file))
+                       (auto-local (and (boundp 'TeX-auto-local) TeX-auto-local)))
+              (list (expand-file-name auto-local buffer-dir)))
+            (when-let ((master-file (my/auctex-master-file-path))
+                       (master-dir (file-name-directory master-file))
+                       (auto-local (and (boundp 'TeX-auto-local) TeX-auto-local)))
+              (list (expand-file-name auto-local master-dir)))
+            (when (and (boundp 'TeX-style-private)
+                       (stringp TeX-style-private))
+              (list (expand-file-name TeX-style-private)))
+            (when (and (boundp 'TeX-auto-private)
+                       (stringp TeX-auto-private))
+              (list (expand-file-name TeX-auto-private)))))))
+
+  (defun my/auctex-style-file-uses-chinese-p (style)
+    "检查 STYLE 对应的 AUCTeX style 文件是否间接启用了中文支持。"
+    (cl-some
+     (lambda (dir)
+       (let ((style-file (expand-file-name (format "%s.el" style) dir)))
+         (when (file-readable-p style-file)
+           (with-temp-buffer
+             (insert-file-contents style-file)
+             (goto-char (point-min))
+             (re-search-forward my/auctex-chinese-style-el-regexp nil t)))))
+     (my/auctex-style-search-dirs)))
+
+  (defun my/auctex-style-files-use-chinese-p ()
+    "检查当前激活样式对应的 el 文件是否间接启用了中文支持。"
+    (and (boundp 'TeX-active-styles)
+         (cl-some #'my/auctex-style-file-uses-chinese-p TeX-active-styles)))
+
+  (defun my/auctex-uses-chinese-p ()
+    "综合当前文件、master 文件和 AUCTeX 样式信息判断中文支持。"
+    (or (and (boundp 'TeX-active-styles)
+             (cl-some (lambda (style)
+                        (member style TeX-active-styles))
+                      my/auctex-chinese-styles))
+        (my/auctex-buffer-uses-chinese-source-p)
+        (my/auctex-master-uses-chinese-source-p)
+        (my/auctex-style-files-use-chinese-p)))
+
+  (defun my/auctex-current-file-local-engine ()
+    "返回当前文件中声明的 `TeX-engine'，未声明时返回 nil。"
+    (cdr (assq 'TeX-engine file-local-variables-alist)))
+
+  (defun my/auctex-write-engine-to-file (engine)
+    "使用 Emacs 内置接口把 ENGINE 写入文件局部变量。"
+    (when (buffer-file-name)
+      (let ((current (my/auctex-current-file-local-engine)))
+        (unless (eq current engine)
+          (add-file-local-variable 'TeX-engine engine)
+          (setf (alist-get 'TeX-engine file-local-variables-alist) engine)))))
+
+  (defun my/auctex-auto-engine ()
+    "根据文档内容自动设置 `TeX-engine'，并同步到文件局部变量。"
+    (when (derived-mode-p 'latex-mode)
+      (let ((engine (if (my/auctex-uses-chinese-p) 'xetex 'luatex)))
+        (setq-local TeX-engine engine)
+        (my/auctex-write-engine-to-file engine))))
+#+end_src
+
 **** AUCTeX
 
 #+begin_src emacs-lisp
@@ -3200,14 +3333,18 @@ VARIABLES and BOUNDS should come from `my-auctex--inspect-local-vars-block'."
   ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
 
-  (advice-add 'TeX-normal-mode :after #'my-auctex--apply-auto-engine-before) 
-  (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
-  (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before)
+  ;; 在编译命令前自动触发
+  (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine)))
+  (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine)))
+
+  ;; (advice-add 'TeX-normal-mode :after #'my-auctex--apply-auto-engine-before) 
+  ;; (advice-add 'TeX-command-run-all :before #'my-auctex--apply-auto-engine-before)
+  ;; (advice-add 'TeX-command-master :before #'my-auctex--apply-auto-engine-before)
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
     (interactive)
-    (my-auctex-apply-auto-engine)
+    (my/auctex-auto-engine)                  ; 新版引擎检测
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
 
     (local-set-key (kbd "<tab>") #'my/latex-tab)
