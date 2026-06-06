@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-06-06 23:20:09 baojie>
+#+DATE: Time-stamp: <2026-06-06 23:28:41 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -945,7 +945,7 @@ this stage of initialization."
               "~/Documents/Notes/Papers/"
               "~/Documents/Notes/Misc/"
               "~/Documents/Notes/Review/"
-              "~/Documents/Archives/Emacs/")))
+              "~/Documents/Archives/EmacsMinimalConfig/")))
 
   (defconst my/recentf-keep-directories
     (seq-filter #'directory-name-p my/recentf-keep-paths)
