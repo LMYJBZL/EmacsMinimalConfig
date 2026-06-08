@@ -3054,14 +3054,16 @@ Priority:
           (add-file-local-variable 'TeX-engine engine)
           (setf (alist-get 'TeX-engine file-local-variables-alist) engine)))))
 
-  (defun my/auctex-auto-engine ()
-    "根据文档内容自动设置 `TeX-engine'，并同步到文件局部变量。"
+  (defun my/auctex-auto-engine (&optional write-file-local)
+    "根据文档内容自动设置 `TeX-engine'。
+若 WRITE-FILE-LOCAL 非 nil，则同步到文件局部变量。"
     (when (derived-mode-p 'latex-mode 'LaTeX-mode)
       (let ((engine (if (my/auctex-uses-chinese-p) 'xetex 'luatex)))
         (unless (and (boundp 'TeX-engine)
                      (eq TeX-engine engine))
           (setq-local TeX-engine engine))
-        (my/auctex-write-engine-to-file engine))))
+        (when write-file-local
+          (my/auctex-write-engine-to-file engine)))))
 #+end_src
 
 **** AUCTeX
@@ -3140,8 +3142,8 @@ Priority:
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
 
   ;; 在编译命令前自动触发
-  (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine)))
-  (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine)))
+  (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine t)))
+  (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine t)))
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
