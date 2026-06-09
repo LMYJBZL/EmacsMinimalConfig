@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-06-06 23:28:41 baojie>
+#+DATE: Time-stamp: <2026-06-09 10:20:48 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -2129,9 +2129,10 @@ permissions 为t,那么你还能编辑文件属性).
 (use-package whitespace
   :ensure nil
   :defer t
-  :hook (prog-mode . (lambda ()
-                       (add-hook 'before-save-hook #'whitespace-cleanup nil t))))
-
+  ;; :hook (prog-mode . (lambda ()
+  ;;                      (add-hook 'before-save-hook #'whitespace-cleanup nil t)))
+  )
+(add-hook 'before-save-hook #'whitespace-cleanup)
 #+end_src
 
 ** Electric Pair
