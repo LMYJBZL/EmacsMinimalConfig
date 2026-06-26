@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-06-09 10:20:48 baojie>
+#+DATE: Time-stamp: <2026-06-26 15:53:38 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1031,8 +1031,11 @@ Enables Emacs to remember the last location within a file upon reopening.
 
 (setq visual-line-fringe-indicators '(left-curly-arrow right-curly-arrow))
 
-(global-visual-wrap-prefix-mode 1)
-(setopt visual-wrap-extra-indent 2)
+(when (fboundp 'global-visual-wrap-prefix-mode)
+  (global-visual-wrap-prefix-mode 1))
+
+(when (boundp 'visual-wrap-extra-indent)
+  (setopt visual-wrap-extra-indent 2))
 #+end_src
 
 ** Ui Elements
@@ -1103,11 +1106,11 @@ Enables Emacs to remember the last location within a file upon reopening.
         ))
 
 (defun my/tex-help-fixed-width ()
-  (let ((help-win (get-buffer-window "*TeX Help*")))
-    (when help-win
-      (let ((current (window-total-width help-win))
-            (target 76))
-        (window-resize help-win (- target current) t))))) ;; t = 横向调整
+  (when-let ((help-win (get-buffer-window "*TeX Help*")))
+    (let ((current (window-total-width help-win))
+          (target 76))
+      (when (> (abs (- current target)) 2)
+        (window-resize help-win (- target current) t)))))
 
 (add-hook 'window-configuration-change-hook
           #'my/tex-help-fixed-width)
@@ -2128,11 +2131,17 @@ permissions 为t,那么你还能编辑文件属性).
 #+begin_src emacs-lisp
 (use-package whitespace
   :ensure nil
-  :defer t
-  ;; :hook (prog-mode . (lambda ()
-  ;;                      (add-hook 'before-save-hook #'whitespace-cleanup nil t)))
-  )
-(add-hook 'before-save-hook #'whitespace-cleanup)
+  :defer t)
+
+(defun my/enable-whitespace-cleanup ()
+  "Enable whitespace cleanup before save in the current buffer."
+  (add-hook 'before-save-hook #'whitespace-cleanup nil t))
+
+(dolist (hook '(prog-mode-hook
+                text-mode-hook
+                LaTeX-mode-hook
+                latex-mode-hook))
+  (add-hook hook #'my/enable-whitespace-cleanup))
 #+end_src
 
 ** Electric Pair
@@ -2621,9 +2630,6 @@ Need-to-have for programmers.
 *** Org
 
 #+begin_src emacs-lisp
-(require 'org-indent)
-(require 'ox-latex)
-
 (use-package org
   :ensure nil                         ; 内置包无需安装
   :mode ("\\.org\\'" . org-mode)
@@ -2676,6 +2682,8 @@ Need-to-have for programmers.
   (org-confirm-babel-evaluate nil)
 
   :config
+  (require 'org-indent)
+  (require 'ox-latex)
   ;; 加载 Babel 语言支持
   (org-babel-do-load-languages
    'org-babel-load-languages
@@ -2715,9 +2723,10 @@ Need-to-have for programmers.
         (concat my/tex-cls-dir "//:"
                 my/tex-assets-dir "//:"
                 (getenv "TEXINPUTS")))
+
 (setenv "BIBINPUTS"
-        (concat my/tex-bib-dir "//"
-                (getenv "BIBINPUTS")))
+        (concat my/tex-bib-dir "//:"
+                (or (getenv "BIBINPUTS") "")))
 #+end_src
 
 #+begin_src emacs-lisp :tangle no
@@ -2983,7 +2992,7 @@ Priority:
 ;; 内置的 `add-file-local-variable' 维护文件局部变量，避免重复维护两套逻辑。
 #+end_src
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
   (defconst my/auctex-chinese-source-regexp
     (concat
      "^[[:space:]]*\\\\documentclass"
@@ -3143,13 +3152,13 @@ Priority:
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
 
   ;; 在编译命令前自动触发
-  (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine t)))
-  (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine t)))
+  ;; (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine t)))
+  ;; (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine t)))
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
     (interactive)
-    (my/auctex-auto-engine)                  ; 新版引擎检测
+    ;; (my/auctex-auto-engine)                  ; 新版引擎检测
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
 
     (local-set-key (kbd "<tab>") #'my/latex-tab)
@@ -3166,6 +3175,7 @@ Priority:
     ;; (setq flyspell-generic-check-word-predicate 'tex-mode-flyspell-verify)
     ;; (setq-default ispell-parser 'tex)
     ;; (my/translate-fullwidth-to-halfwidth)
+
     (LaTeX-math-mode)
     ;; (highlight-indent-guides-mode)
     (visual-line-mode)
