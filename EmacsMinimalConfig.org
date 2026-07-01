@@ -1055,6 +1055,27 @@ Enables Emacs to remember the last location within a file upon reopening.
 (tooltip-mode 1)
 #+end_src
 
+** Terminal compatibility
+
+#+begin_src emacs-lisp
+;; Keep terminal Emacs integrated with the macOS clipboard.  This is local to
+;; macOS and does not depend on OSC 52 or a particular terminal emulator.
+(when (and (eq system-type 'darwin) (not (display-graphic-p)))
+  (defun my/macos-terminal-copy (text &optional _push)
+    "Copy TEXT to the macOS clipboard from a terminal frame."
+    (let ((process-connection-type nil))
+      (let ((process (start-process "pbcopy" nil "pbcopy")))
+        (process-send-string process text)
+        (process-send-eof process))))
+
+  (defun my/macos-terminal-paste ()
+    "Return the current contents of the macOS clipboard."
+    (shell-command-to-string "pbpaste"))
+
+  (setq interprogram-cut-function #'my/macos-terminal-copy
+        interprogram-paste-function #'my/macos-terminal-paste))
+#+end_src
+
 ** Window
 
 #+begin_src emacs-lisp
@@ -1828,21 +1849,26 @@ permissions 为t,那么你还能编辑文件属性).
 
 #+begin_src emacs-lisp
 (use-package all-the-icons
+  :if (display-graphic-p)
   :ensure t)
 
 (use-package all-the-icons-dired
+  :if (display-graphic-p)
   ;; :diminish
   :hook (dired-mode . all-the-icons-dired-mode))
 
 (use-package all-the-icons-completion
+  :if (display-graphic-p)
   :after (marginalia all-the-icons)
   :hook (marginalia-mode . all-the-icons-completion-marginalia-setup)
   :init (all-the-icons-completion-mode))
 
 (use-package all-the-icons-ibuffer
+  :if (display-graphic-p)
   :hook (ibuffer-mode . all-the-icons-ibuffer-mode))
 
 (use-package svg-lib
+  :if (display-graphic-p)
   :ensure t
   :hook (after-init-hook . (lambda ()
                              (require 'font-lock)
@@ -1852,7 +1878,7 @@ permissions 为t,那么你还能编辑文件属性).
   :ensure t
   :after corfu
   :custom
-  (kind-icon-use-icons t)
+  (kind-icon-use-icons (display-graphic-p))
   (kind-icon-default-face 'corfu-default)
   (kind-icon-default-style
    '(:padding 0 :stroke 0 :margin 0 :radius 0 :height 0.9 :scale 0.9))
@@ -1919,6 +1945,7 @@ permissions 为t,那么你还能编辑文件属性).
 
 #+begin_src emacs-lisp
 (use-package eldoc-box
+  :if (display-graphic-p)
   ;; :ensure nil
   :after (eglot eldoc)
   :init
@@ -2128,16 +2155,17 @@ permissions 为t,那么你还能编辑文件属性).
 
   (define-key rime-mode-map (kbd "C-`") 'rime-force-enable)
 
-  (set-face-attribute 'rime-default-face nil
-                      :font "霞鹜文楷"
-                      :foreground "#a0134f"
-                      :background 'unspecified)
-  (set-face-attribute 'rime-candidate-num-face nil
-                      :font "JetBrains Mono NL")
-  (set-face-attribute 'rime-preedit-face nil
-                      :font (font-spec :family "霞鹜文楷" :weight 'bold)
-                      :foreground "#a0134f"
-                      :background 'unspecified))
+  (when (display-graphic-p)
+    (set-face-attribute 'rime-default-face nil
+                        :font "霞鹜文楷"
+                        :foreground "#a0134f"
+                        :background 'unspecified)
+    (set-face-attribute 'rime-candidate-num-face nil
+                        :font "JetBrains Mono NL")
+    (set-face-attribute 'rime-preedit-face nil
+                        :font (font-spec :family "霞鹜文楷" :weight 'bold)
+                        :foreground "#a0134f"
+                        :background 'unspecified)))
 #+end_src
 
 ** Whitespace
@@ -2572,7 +2600,9 @@ git push -u origin main
         treemacs-project-follow-cleanup          nil
         treemacs-persist-file                    (expand-file-name ".cache/treemacs-persist" user-emacs-directory)
         treemacs-position                        'left
-        treemacs-read-string-input               'from-child-frame
+        treemacs-read-string-input               (if (display-graphic-p)
+                                                     'from-child-frame
+                                                   'from-minibuffer)
         treemacs-recenter-distance               0.1
         treemacs-recenter-after-file-follow      nil
         treemacs-recenter-after-tag-follow       nil
