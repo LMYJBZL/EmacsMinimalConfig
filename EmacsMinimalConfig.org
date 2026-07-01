@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-01 11:23:43 baojie>
+#+DATE: Time-stamp: <2026-07-01 12:53:02 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -125,6 +125,7 @@ Note that this should end with a directory separator.")
       (expand-file-name "themes/" my/cache-dir))
 
 (setq custom-file (expand-file-name "custom.el" my/cache-dir))
+(load custom-file 'noerror 'nomessage)
 
 (setq savehist-file (expand-file-name "history" my/cache-dir)
       recentf-save-file (expand-file-name "recentf" my/cache-dir)
@@ -2425,14 +2426,13 @@ Embark integrates with Consult and Vertico to provide context-sensitive actions 
   :commands (yas-minor-mode yas-expand)
   :init
   (setq yas-snippet-dirs
-        (list (expand-file-name "snippets/" my/cache-dir)))
+        (list my/icloud-snippets-dir))
   :config
   ;; (add-hook 'yas-minor-mode-hook (lambda () (yas-activate-extra-mode 'fundamental-mode)))
   ;; Suppress warning for yasnippet code.
   (require 'warnings)
   (add-to-list 'warning-suppress-types '(yasnippet backquote-change))
   ;; (add-to-list 'yas-snippet-dirs (expand-file-name "~/Library/Mobile Documents/com~apple~CloudDocs/snippets"))
-  (add-to-list 'yas-snippet-dirs my/icloud-snippets-dir)
   (yas-reload-all))
 #+end_src
 
