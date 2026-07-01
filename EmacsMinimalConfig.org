@@ -2992,7 +2992,7 @@ Priority:
     (dolist (pair latex-brace-pairs-left-sorted)
       (let* ((left (car pair))
              (llen (length left)))
-        (when (and (>= pos llen)
+        (when (and (>= (- pos llen) (point-min))
                    (string= (buffer-substring-no-properties (- pos llen) pos) left))
           ;; 找到左符号匹配
           (let ((match (my/TeX--find-matching-right pos left)))
@@ -3024,7 +3024,7 @@ Priority:
     (dolist (pair latex-brace-pairs-right-sorted)
       (let* ((right (cdr pair))
              (rlen (length right)))
-        (when (and (>= pos rlen)
+        (when (and (>= (- pos rlen) (point-min))
                    (string= (buffer-substring-no-properties (- pos rlen) pos) right))
           ;; 找到右符号匹配
           (let ((match (my/TeX--find-matching-left pos right)))
