@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-01 12:53:02 baojie>
+#+DATE: Time-stamp: <2026-07-01 16:54:29 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -2069,12 +2069,29 @@ permissions 为t,那么你还能编辑文件属性).
   :ensure t
   :custom
   (default-input-method "rime")
+  (rime-posframe-properties
+   '(:internal-border-width 1
+     :internal-border-color "#e6e6e6"))
   ;; (rime-show-candidate 'posframe) ;; 可选：'popup 'child-frame 'posframe 'minibuffer
   (rime-emacs-module-header-root "/Applications/Emacs.app/Contents/Resources/include")
   ;; (rime-librime-root "~/.local/librime/dist/")
   (rime-librime-root "/opt/homebrew/opt/librime/")
-  (rime-user-data-dir "~/Library/Rime/")  ;; rime-user-data-dir "~/.local/rime-data/"
+  ;; Emacs 使用独立的雾凇运行目录，避免与鼠须管同时锁定
+  ;; ~/Library/Rime/*.userdb 并再次损坏 LevelDB 词库。
+  (rime-share-data-dir "~/.emacs.d/rime/")
+  (rime-user-data-dir "~/.emacs.d/rime/")
   :config
+
+  ;; GUI 中让候选词靠近光标；终端中使用稳定的 minibuffer 显示。
+  (setq rime-show-candidate (if (display-graphic-p) 'posframe 'minibuffer))
+
+  (defun my/enable-rime-in-writing-modes ()
+    "在日常写作模式中自动启用 Rime。"
+    (unless (equal current-input-method "rime")
+      (activate-input-method "rime")))
+
+  (dolist (hook '(text-mode-hook org-mode-hook LaTeX-mode-hook))
+    (add-hook hook #'my/enable-rime-in-writing-modes))
 
   (setq-default mode-line-mule-info
                 '(""
@@ -2115,7 +2132,10 @@ permissions 为t,那么你还能编辑文件属性).
   (defun my/set-all-frames-cursor-color (color)
     "设置所有现存 frame 的光标颜色为 COLOR。"
     (dolist (frame (frame-list))
-      (set-frame-parameter frame 'cursor-color color)))
+      ;; 自动中英文判断会在每条命令后运行；只有颜色实际变化时才写 frame。
+      (unless (equal (frame-parameter frame 'my/rime-cursor-color) color)
+        (set-frame-parameter frame 'cursor-color color)
+        (set-frame-parameter frame 'my/rime-cursor-color color))))
 
   (defun my/update-cursor-color-all-frames ()
     "根据当前输入法状态，更新所有 frame 的光标颜色。"
@@ -2134,8 +2154,18 @@ permissions 为t,那么你还能编辑文件属性).
   (defun my/rime-refresh-cursor-color (&rest _)
     (my/update-cursor-color-all-frames))
 
-  (add-hook 'input-method-activate-hook #'my/rime-refresh-cursor-color)
-  (add-hook 'input-method-inactivate-hook #'my/rime-refresh-cursor-color)
+  (defun my/rime-enable-cursor-tracking ()
+    "在当前 Rime buffer 中跟踪上下文自动中英文状态。"
+    (add-hook 'post-command-hook #'my/rime-refresh-cursor-color nil t)
+    (my/rime-refresh-cursor-color))
+
+  (defun my/rime-disable-cursor-tracking ()
+    "停止在当前 buffer 中跟踪 Rime 状态并恢复默认光标颜色。"
+    (remove-hook 'post-command-hook #'my/rime-refresh-cursor-color t)
+    (my/set-all-frames-cursor-color my/default-cursor-color))
+
+  (add-hook 'input-method-activate-hook #'my/rime-enable-cursor-tracking)
+  (add-hook 'input-method-deactivate-hook #'my/rime-disable-cursor-tracking)
   (add-hook 'window-selection-change-functions #'my/rime-refresh-cursor-color)
 
   ;; 新 frame 创建时，强制应用当前正确的颜色（防止 default-frame-alist 被其他包覆盖）
@@ -2148,7 +2178,7 @@ permissions 为t,那么你还能编辑文件属性).
   (setq rime-cursor "˰")
 
   (setq rime-disable-predicates
-        '(;; my/rime-predicate-force-ascii-once
+        '(;; 中英文频繁混输时，根据上下文自动使用英文。
           rime-predicate-after-alphabet-char-p
           rime-predicate-space-after-cc-p
           rime-predicate-tex-math-or-command-p))
@@ -2159,7 +2189,7 @@ permissions 为t,那么你还能编辑文件属性).
     (set-face-attribute 'rime-default-face nil
                         :font "霞鹜文楷"
                         :foreground "#a0134f"
-                        :background 'unspecified)
+                        :background "#d0d6ff")
     (set-face-attribute 'rime-candidate-num-face nil
                         :font "JetBrains Mono NL")
     (set-face-attribute 'rime-preedit-face nil
