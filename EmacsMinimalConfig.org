@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-06-26 15:53:38 baojie>
+#+DATE: Time-stamp: <2026-07-01 11:23:43 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1492,6 +1492,19 @@ permissions 为t,那么你还能编辑文件属性).
 ;; (advice-add 'string-width :around #'my/completion-safe-string-width)
 #+end_src
 
+** Corfu
+
+#+begin_src emacs-lisp
+(use-package corfu
+  :ensure t
+  :custom
+  (corfu-auto nil)            ; 不自动弹出，手动触发
+  (corfu-cycle t)             ; 到末尾后循环选择
+  (corfu-preselect 'prompt)   ; 默认不预选候选，避免误输入
+  :init
+  (global-corfu-mode))
+#+end_src
+
 ** Eglot
 
 #+begin_src emacs-lisp
@@ -1836,22 +1849,22 @@ permissions 为t,那么你还能编辑文件属性).
 
 (use-package kind-icon
   :ensure t
-  ;; :after corfu
+  :after corfu
   :custom
   (kind-icon-use-icons t)
   (kind-icon-default-face 'corfu-default)
   (kind-icon-default-style
-   '(:padding 0 :stroke 0 :margin 0 :radius 0 :height 0.9 :scale 0.9)))
-;; :config
-;; (add-hook 'my-completion-ui-mode-hook
-;;           (lambda ()
-;;             (setq completion-in-region-function
-;;                   (kind-icon-enhance-completion completion-in-region-function))))
-;; (add-hook 'corfu-mode-hook
-;;         (lambda ()
-;;           (setq completion-in-region-function
-;;                 (kind-icon-enhance-completion completion-in-region-function))))
-;; (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
+   '(:padding 0 :stroke 0 :margin 0 :radius 0 :height 0.9 :scale 0.9))
+  :config
+  ;; (add-hook 'my-completion-ui-mode-hook
+  ;;           (lambda ()
+  ;;             (setq completion-in-region-function
+  ;;                   (kind-icon-enhance-completion completion-in-region-function))))
+  ;; (add-hook 'corfu-mode-hook
+  ;;         (lambda ()
+  ;;           (setq completion-in-region-function
+  ;;                 (kind-icon-enhance-completion completion-in-region-function))))
+  (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
 #+end_src
 
 ** Mode Line
@@ -3098,7 +3111,7 @@ Priority:
   (setq TeX-auto-local ".LaTeXAuto/")
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
   (setq TeX-style-private my/tex-el-dir)
-  ;; (setq TeX-auto-private "~/Documents/Notes/TeX/el")
+  (setq TeX-auto-private "~/Documents/Notes/TeX/el")
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
 
   ;; (if (string-match "address" flyspell-tex-command-regexp)
@@ -3128,10 +3141,10 @@ Priority:
 
   (setq-default TeX-master nil)
   (setq-default TeX-open-quote "``"
-                TeX-closed-quote "''")
+                TeX-close-quote "''")
   (setq-default font-latex-fontify-script nil
                 font-latex-fontify-sectioning 'color)
-  (setq LaTeX-item-indent 0)
+  (setq LaTeX-item-indent 2)
   ;; (setq TeX-ispell-extend-skip-list t)
 
   ;; (setf (cadr (assoc "ChkTeX" TeX-command-list)) "chktex -q -v6 -n2 -n3 -n9 -n18 %s")
@@ -3181,7 +3194,7 @@ Priority:
     (visual-line-mode)
     ;; (electric-pair-mode)
     ;; (electric-indent-local-mode)
-    (turn-on-auto-fill)
+    ;; (turn-on-auto-fill)
     ;; (turn-on-reftex)
     ;; (predictive-mode)
     ;; (flyspell-mode)
@@ -3189,15 +3202,27 @@ Priority:
     (flymake-mode)
     (yas-minor-mode)))
 
-;; 编译后复制 PDF 文件
+;; 编译后将 PDF 从 `TeX-output-dir' 复制到 master 文件所在目录。
+(defun my/auctex-copy-pdf-to-master-dir (output-filename)
+  "Copy compiled PDF OUTPUT-FILENAME beside the master TeX file."
+  (when (and (string-equal (file-name-extension output-filename) "pdf")
+             (file-exists-p output-filename))
+    (let* ((source (expand-file-name output-filename))
+           (master-buffer (and (boundp 'TeX-command-buffer)
+                               (buffer-live-p TeX-command-buffer)
+                               TeX-command-buffer))
+           (master-dir (if master-buffer
+                           (with-current-buffer master-buffer
+                             (TeX-master-directory))
+                         default-directory))
+           (target (expand-file-name (file-name-nondirectory source)
+                                     master-dir)))
+      (unless (and (file-exists-p target)
+                   (file-equal-p source target))
+        (copy-file source target t)))))
+
 (add-hook 'TeX-after-compilation-finished-functions
-          (lambda (output-filename)
-            (let* ((base (file-name-base output-filename))
-                   (dir (or TeX-output-dir ""))
-                   (pdf-file (concat dir base ".pdf"))
-                   (out-pdf-file (concat base ".pdf")))
-              (when (file-exists-p pdf-file)
-                (copy-file pdf-file out-pdf-file t)))))
+          #'my/auctex-copy-pdf-to-master-dir)
 #+end_src
 
 **** refTeX
