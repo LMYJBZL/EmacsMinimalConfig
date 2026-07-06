@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-06 20:06:15 baojie>
+#+DATE: Time-stamp: <2026-07-06 20:26:41 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1304,7 +1304,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 (when-let ((gls (executable-find "gls")))
   (setq dired-use-ls-dired t
         insert-directory-program gls
-        dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first --color=always"))
+        dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first"))
 
 (setq dired-free-space nil
       dired-dwim-target t  ; Propose a target for intelligent moving/copying
@@ -1509,8 +1509,8 @@ Vertico 只负责 minibuffer；Corfu 继续负责正文中的
   (vertico-resize nil)
   ;; Inspect more candidates before deciding the grid width, and keep enough
   ;; horizontal room for long LaTeX command/environment names.
-  (vertico-grid-lookahead 200)
-  (vertico-grid-max-columns 3)
+  ;; (vertico-grid-lookahead 200)
+  ;; (vertico-grid-max-columns 3)
   (vertico-buffer-display-action
    '((display-buffer-in-side-window)
      (side . right)
@@ -1612,7 +1612,6 @@ Vertico 只负责 minibuffer；Corfu 继续负责正文中的
   ;; This reduces log clutter to improves performance.
   (setq jsonrpc-event-hook nil)
   ;; Reduce memory usage and avoid cluttering *EGLOT events* buffer
-  (setq eglot-events-buffer-size 0)  ; Deprecated
   (setq eglot-events-buffer-config '(:size 0 :format short)))
 #+end_src
 
@@ -2822,6 +2821,15 @@ Need-to-have for programmers.
 *** Org
 
 #+begin_src emacs-lisp
+(defun my/org-babel-confirm-outside-org-directory (_language _body)
+  "Return non-nil when Babel evaluation should ask for confirmation.
+Only files below `org-directory' are treated as trusted.  Unsaved buffers and
+Org files elsewhere always require confirmation."
+  (not (and buffer-file-name
+            (file-in-directory-p (expand-file-name buffer-file-name)
+                                 (file-name-as-directory
+                                  (expand-file-name org-directory))))))
+
 (use-package org
   :ensure nil                         ; 内置包无需安装
   :mode ("\\.org\\'" . org-mode)
@@ -2871,7 +2879,7 @@ Need-to-have for programmers.
 
   ;; 导出
   (org-export-backends '(ascii html icalendar latex odt md))
-  (org-confirm-babel-evaluate nil)
+  (org-confirm-babel-evaluate #'my/org-babel-confirm-outside-org-directory)
 
   :config
   (require 'org-indent)
@@ -3023,14 +3031,19 @@ Priority:
   "基本 LaTeX 括号符号表")
 
 (defun latex-generate-delim-pairs ()
-  "生成所有层次的 LaTeX 括号配对，包括 \\left, \\big, \\Big, \\bigg, \\Bigg 等。"
-  (let ((prefixes '("" "\\left" "\\bigl" "\\Bigl" "\\biggl" "\\Biggl"))
-        (suffixes '("" "\\right" "\\bigr" "\\Bigr" "\\biggr" "\\Biggr"))
+  "生成同层级的 LaTeX 括号配对。"
+  (let ((levels '(("" . "")
+                  ("\\left" . "\\right")
+                  ("\\bigl" . "\\bigr")
+                  ("\\Bigl" . "\\Bigr")
+                  ("\\biggl" . "\\biggr")
+                  ("\\Biggl" . "\\Biggr")))
         result)
-    (dolist (pre prefixes)
-      (dolist (suf suffixes)
-        (dolist (pair latex-basic-braces)
-          (push (cons (concat pre (car pair)) (concat suf (cdr pair))) result))))
+    (dolist (level levels)
+      (dolist (pair latex-basic-braces)
+        (push (cons (concat (car level) (car pair))
+                    (concat (cdr level) (cdr pair)))
+              result)))
     ;; 添加非闭合情况
     (dolist (left latex-basic-braces)
       (push (cons (concat "\\left" (car left)) "\\right.") result)
@@ -3059,48 +3072,43 @@ Priority:
   (string-blank-p (buffer-substring-no-properties start end)))
 
 (defun my/TeX--find-matching-right (pos left-symbol)
-  "从 POS (光标位置) 向后查找与 LEFT-SYMBOL 匹配的右符号。
-返回 (RIGHT-POS RIGHT-LEN) —— RIGHT-POS 为 match 结束位置（search-forward 返回的点），或 nil。
-搜索范围限制在 pos 后 5000 字符内，避免大文件卡顿。"
+  "Return the adjacent blank-separated right match for LEFT-SYMBOL at POS.
+The result is (RIGHT-POS RIGHT-LEN), where RIGHT-POS is the match end."
   (let* ((rights (mapcar #'cdr
                          (cl-remove-if-not
                           (lambda (p) (string= (car p) left-symbol))
                           latex-brace-pairs)))
          (sorted-rights (sort (copy-sequence rights)
-                              (lambda (a b) (> (length a) (length b)))))
-         ;; 限制搜索范围到 5000 字符内
-         (limit (min (point-max) (+ pos 5000))))
+                              (lambda (a b) (> (length a) (length b))))))
     (catch 'found
-      (dolist (r sorted-rights)
-        (save-excursion
-          (goto-char pos)
-          ;; 添加 limit 参数，防止搜索到文件末尾
-          (let ((rpos (search-forward r limit t)))
-            (when rpos
-              (throw 'found (list rpos (length r)))))))
+      (save-excursion
+        (goto-char pos)
+        (skip-chars-forward " \t\n\r")
+        (dolist (right sorted-rights)
+          (when (looking-at (regexp-quote right))
+            (throw 'found (list (+ (point) (length right))
+                                (length right))))))
       nil)))
 
 (defun my/TeX--find-matching-left (pos right-symbol)
-  "从 POS (光标位置) 向前查找与 RIGHT-SYMBOL 匹配的左符号。
-返回 (LEFT-POS LEFT-LEN) —— LEFT-POS 为 match 开始位置，或 nil。
-搜索范围限制在 pos 前 5000 字符内，避免大文件卡顿。"
+  "Return the adjacent blank-separated left match for RIGHT-SYMBOL at POS.
+The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
   (let* ((lefts (mapcar #'car
                         (cl-remove-if-not
                          (lambda (p) (string= (cdr p) right-symbol))
                          latex-brace-pairs)))
          (sorted-lefts (sort (copy-sequence lefts)
-                             (lambda (a b) (> (length a) (length b)))))
-         ;; 限制搜索范围，向前搜索到 pos 前 5000 字符
-         (limit (max (point-min) (- pos 5000))))
+                             (lambda (a b) (> (length a) (length b))))))
     (catch 'found
-      (dolist (l sorted-lefts)
-        (save-excursion
-          ;; 从 right 符号开始位置向前搜索左符号
-          (goto-char (- pos (length right-symbol)))
-          ;; 添加 limit 参数，防止搜索到文件开头
-          (let ((lpos (search-backward l limit t)))
-            (when lpos
-              (throw 'found (list lpos (length l)))))))
+      (save-excursion
+        (goto-char (- pos (length right-symbol)))
+        (skip-chars-backward " \t\n\r")
+        (dolist (left sorted-lefts)
+          (let ((start (- (point) (length left))))
+            (when (and (>= start (point-min))
+                       (string= left
+                                (buffer-substring-no-properties start (point))))
+              (throw 'found (list start (length left)))))))
       nil)))
 
 ;;; ------------------------------
@@ -3180,8 +3188,8 @@ Priority:
 
 #+begin_src emacs-lisp :tangle no
 ;; 旧版自动引擎实现曾在这里手写解析/重写 Local Variables 块。
-;; 现在实际配置使用下面启用的 `my/auctex-auto-engine'，并交给 Emacs
-;; 内置的 `add-file-local-variable' 维护文件局部变量，避免重复维护两套逻辑。
+;; 下面的 `my/auctex-auto-engine' 也保留为候选实现，当前没有 tangle，
+;; 也没有挂到 LaTeX mode 或编译命令上。
 #+end_src
 
 #+begin_src emacs-lisp :tangle no

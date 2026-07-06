@@ -49,6 +49,18 @@
     (my/TeX--delete-pair)
     (should (equal (buffer-string) ""))))
 
+(ert-deftest my/tex-delete-does-not-pair-mismatched-levels ()
+  (my/test-with-text "\\left(   \\Bigr)"
+    (goto-char (+ (point-min) (length "\\left(")))
+    (my/TeX--delete-pair)
+    (should (equal (buffer-string) "   \\Bigr)"))))
+
+(ert-deftest my/tex-delete-does-not-search-past-content ()
+  (my/test-with-text "\\left(x \\right)"
+    (goto-char (+ (point-min) (length "\\left(")))
+    (my/TeX--delete-pair)
+    (should (equal (buffer-string) "x \\right)"))))
+
 (ert-deftest my/tex-delete-falls-back-to-normal-backspace ()
   (my/test-with-text "abc"
     (goto-char (point-max))
