@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-01 16:54:29 baojie>
+#+DATE: Time-stamp: <2026-07-06 19:43:34 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1445,73 +1445,132 @@ permissions 为t,那么你还能编辑文件属性).
   (setq global-hl-line-sticky-flag nil))
 #+end_src
 
-** Icomplete
-
-#+begin_src emacs-lisp :tangle no
-;; Do not delay displaying completion candidates in `fido-mode' or
-;; `fido-vertical-mode'
-;; (setq icomplete-compute-delay 0.01)
-
-(use-package icomplete
-  :bind (:map icomplete-minibuffer-map
-              ("C-n" . icomplete-forward-completions)
-              ("C-p" . icomplete-backward-completions)
-              ("C-v" . icomplete-vertical-toggle)
-              ("RET" . icomplete-force-complete-and-exit)
-              ("C-j" . exit-minibuffer)) ;; So we can exit commands like `multi-file-replace-regexp-as-diff'
-  :hook
-  (after-init-hook . (lambda ()
-                       (fido-mode -1)
-                       (icomplete-vertical-mode 1)))
-  :config
-  (setq icomplete-delay-completions-threshold 0)
-  (setq icomplete-compute-delay 0.01)
-  (setq icomplete-show-matches-on-no-input t)
-  (setq icomplete-in-buffer t)
-  (setq icomplete-hide-common-prefix nil)
-  (setq icomplete-prospects-height 10)
-  (setq icomplete-separator " . ")
-  (setq icomplete-with-completion-tables t)
-  (setq icomplete-max-delay-chars 0)
-  (setq icomplete-scroll t))
-#+end_src
-
 ** Completion
 
 #+begin_src emacs-lisp
-;; (setq completion-auto-help nil) ;; nil t lazy visible always
-(setq completion-auto-help 'visible) ;; nil t lazy visible always
-(setq completion-auto-select 'second-tab)
-;; (setq completion-auto-select t)
+(defcustom my/minibuffer-completion-frontend 'vertico
+  "Minibuffer completion frontend.
 
-;; (completion-eager-update t) ;; EMACS-31
+Use `vertico' for Vertico and its category-aware multiform display.
+Use `default' to fall back to the built-in Emacs completion UI.  Corfu is
+independent of this setting and continues to provide in-buffer completion."
+  :type '(choice (const :tag "Vertico" vertico)
+                 (const :tag "Built-in Emacs completion" default))
+  :group 'completion)
 
-;; (setq completions-detailed t)   ; 显示更详细的信息
-;; (setq completion-lazy-hilit t)
-
-(setq completion-show-help nil)
-;; (setq completion-styles '(partial-completion flex initials))
-(setq completions-format 'vertical);; 'one-column
-(setq completions-group t)
-
-(setq completions-max-height 11)
-(setq completions-sort 'historical)
-;; (setq completions-highlight-face 'completions-highlight)
+;; These settings are only for the built-in fallback frontend.  Vertico has
+;; its own display, selection and sizing controls below.
+(when (eq my/minibuffer-completion-frontend 'default)
+  (setq completion-auto-help 'visible
+        completion-auto-select nil
+        completion-show-help nil
+        completions-header-format nil
+        completions-format 'vertical
+        completions-group t
+        completions-max-height 11
+        completions-sort 'historical))
 
 (setq read-buffer-completion-ignore-case t)
 (setq read-file-name-completion-ignore-case t)
 
 (setq read-extended-command-predicate #'command-completion-default-include-p)
+#+end_src
 
-;; (advice-remove 'string-width #'my/completion-safe-string-width)
+** Vertico
 
-;; (defun my/completion-safe-string-width (orig &rest args)
-;;   (let ((str (car args)))
-;;     (if (stringp str)
-;;         (apply orig args)
-;;       0)))
-;;
-;; (advice-add 'string-width :around #'my/completion-safe-string-width)
+Vertico 只负责 minibuffer；Corfu 继续负责正文中的
+=completion-at-point=。如果需要退回 Emacs 原生 minibuffer 补全，将
+=my/minibuffer-completion-frontend= 改为 =default= 并重启 Emacs。
+
+#+begin_src emacs-lisp
+(use-package vertico
+  :ensure t
+  :if (eq my/minibuffer-completion-frontend 'vertico)
+  :bind
+  (("M-R" . vertico-repeat)
+   :map vertico-map
+   ("TAB" . vertico-insert)
+   ("<tab>" . vertico-insert)
+   ("M-P" . vertico-repeat-previous)
+   ("M-N" . vertico-repeat-next))
+  :hook
+  ((rfn-eshadow-update-overlay . vertico-directory-tidy)
+   (minibuffer-setup . vertico-repeat-save))
+  :init
+  ;; Load extensions whose customization variables are set below.  This keeps
+  ;; startup independent of whether another multiform mode loaded them first.
+  (require 'vertico-grid)
+  (require 'vertico-buffer)
+  (vertico-mode 1)
+  (vertico-multiform-mode 1)
+  :custom
+  (vertico-cycle t)
+  (vertico-count 9)
+  (vertico-resize nil)
+  ;; Inspect more candidates before deciding the grid width, and keep enough
+  ;; horizontal room for long LaTeX command/environment names.
+  (vertico-grid-lookahead 200)
+  (vertico-grid-max-columns 3)
+  (vertico-buffer-display-action
+   '((display-buffer-in-side-window)
+     (side . right)
+     (slot . 10)
+     (window-width . 0.33)))
+  :config
+  (defun my/vertico-crm-indicator (args)
+    "Prefix the prompt in `completing-read-multiple' with its separator."
+    (cons (format "[CRM%s] %s"
+                  (string-replace "[ \t]*" "" crm-separator)
+                  (car args))
+          (cdr args)))
+
+  (unless (advice-member-p #'my/vertico-crm-indicator
+                           #'completing-read-multiple)
+    (advice-add #'completing-read-multiple
+                :filter-args #'my/vertico-crm-indicator))
+
+  (setq vertico-multiform-commands
+        '((consult-line
+           reverse
+           (vertico-sort-override-function . vertico-sort-alpha))
+          (consult-outline buffer)
+          (consult-buffer (vertico-resize . t) reverse)
+          (describe-symbol
+           (vertico-sort-function . vertico-sort-alpha))
+          (helpful-symbol
+           (vertico-sort-function . vertico-sort-alpha))
+          (consult-xref grid)
+          (LaTeX-section flat)
+          (LaTeX-environment grid)
+          (execute-extended-command reverse)))
+
+  (setq vertico-multiform-categories
+        '((tex-macro grid)
+          (symbol (vertico-sort-function . vertico-sort-alpha))
+          (file
+           (vertico-sort-function . vertico-sort-directories-first)
+           (:keymap . vertico-directory-map)))))
+
+;; AUCTeX 14.1.2 does not attach a completion category to the dynamic
+;; completion table used by `TeX-insert-macro' (`C-c C-m').  Add a dedicated
+;; category so Vertico multiform can reliably select its grid layout.
+(with-eval-after-load 'tex
+  (defun my/tex-macro-completion-table
+      (table string predicate action)
+    "Run TABLE while exposing the `tex-macro' completion category."
+    (if (eq action 'metadata)
+        '(metadata (category . tex-macro))
+      (complete-with-action action table string predicate)))
+
+  (defun my/tex-add-macro-completion-category (table)
+    "Wrap AUCTeX completion TABLE with `tex-macro' metadata."
+    (apply-partially #'my/tex-macro-completion-table table))
+
+  (unless (advice-member-p #'my/tex-add-macro-completion-category
+                           #'TeX--symbol-completion-table)
+    (advice-add #'TeX--symbol-completion-table
+                :filter-return
+                #'my/tex-add-macro-completion-category)))
 #+end_src
 
 ** Corfu
@@ -1520,11 +1579,17 @@ permissions 为t,那么你还能编辑文件属性).
 (use-package corfu
   :ensure t
   :custom
-  (corfu-auto nil)            ; 不自动弹出，手动触发
+  (corfu-auto t)              ; 输入时自动弹出
+  (corfu-auto-delay 0.2)
+  (corfu-auto-prefix 2)
   (corfu-cycle t)             ; 到末尾后循环选择
   (corfu-preselect 'prompt)   ; 默认不预选候选，避免误输入
+  (corfu-popupinfo-delay '(0.6 . 0.3))
   :init
-  (global-corfu-mode))
+  (global-corfu-mode)
+  :config
+  ;; Corfu 2.x uses the built-in Popupinfo extension instead of corfu-doc.
+  (corfu-popupinfo-mode 1))
 #+end_src
 
 ** Eglot
@@ -1850,7 +1915,19 @@ permissions 为t,那么你还能编辑文件属性).
 #+begin_src emacs-lisp
 (use-package all-the-icons
   :if (display-graphic-p)
-  :ensure t)
+  :ensure t
+  :config
+  ;; The upstream fallback uses the legacy FontAwesome family.  Use the
+  ;; installed Octicons family instead, so unknown files keep the same glyph
+  ;; when Vertico adds or removes its current-candidate face.
+  (setq all-the-icons-default-file-icon
+        '(all-the-icons-octicon "file-text"
+          :v-adjust 0.0 :face all-the-icons-dsilver))
+  ;; `messages-buffer-mode' also defaults to the unavailable legacy
+  ;; FontAwesome family, independently of `all-the-icons-default-file-icon'.
+  (setf (alist-get 'messages-buffer-mode all-the-icons-mode-icon-alist)
+        '(all-the-icons-octicon "comment-discussion"
+          :v-adjust 0.0 :face all-the-icons-dsilver)))
 
 (use-package all-the-icons-dired
   :if (display-graphic-p)
@@ -1861,7 +1938,32 @@ permissions 为t,那么你还能编辑文件属性).
   :if (display-graphic-p)
   :after (marginalia all-the-icons)
   :hook (marginalia-mode . all-the-icons-completion-marginalia-setup)
-  :init (all-the-icons-completion-mode))
+  :init
+  (all-the-icons-completion-mode)
+  :config
+  (cl-defmethod all-the-icons-completion-get-icon
+    (cand (_cat (eql file)))
+    (let* ((path (substring-no-properties cand))
+           ;; 不仅检查末尾的 /，也检查候选在文件系统中是否为目录。
+           (directory-p
+            (or (string-suffix-p "/" path)
+                (and (not (file-remote-p path))
+                     (file-directory-p
+                      (expand-file-name path default-directory))))))
+      (concat
+       (if directory-p
+           (all-the-icons-icon-for-dir
+            path
+            :face 'all-the-icons-completion-dir-face)
+         (all-the-icons-icon-for-file path))
+       " ")))
+
+  ;; Reserve a two-column icon slot.  Padding on the left makes every icon
+  ;; share the same right edge; the final space separates it from the label.
+  (cl-defmethod all-the-icons-completion-get-icon :around (cand cat)
+    (let* ((icon (string-trim-right (cl-call-next-method)))
+           (padding (max 0 (- 2 (string-width icon)))))
+      (concat (make-string padding ?\s) icon " "))))
 
 (use-package all-the-icons-ibuffer
   :if (display-graphic-p)
@@ -1883,14 +1985,6 @@ permissions 为t,那么你还能编辑文件属性).
   (kind-icon-default-style
    '(:padding 0 :stroke 0 :margin 0 :radius 0 :height 0.9 :scale 0.9))
   :config
-  ;; (add-hook 'my-completion-ui-mode-hook
-  ;;           (lambda ()
-  ;;             (setq completion-in-region-function
-  ;;                   (kind-icon-enhance-completion completion-in-region-function))))
-  ;; (add-hook 'corfu-mode-hook
-  ;;         (lambda ()
-  ;;           (setq completion-in-region-function
-  ;;                 (kind-icon-enhance-completion completion-in-region-function))))
   (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
 #+end_src
 
