@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-07 08:00:24 baojie>
+#+DATE: Time-stamp: <2026-07-07 09:07:32 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -141,13 +141,6 @@ Note that this should end with a directory separator.")
 ;;; 用户自定义路径常量
 ;;; ============================================================================
 
-
-(defvar minimal-emacs-load-compiled-init-files nil
-  "If non-nil, attempt to load byte-compiled .elc for init files.
-This will enable minimal-emacs to load byte-compiled or possibly native-compiled
-init files for the following initialization files: pre-init.el, post-init.el,
-pre-early-init.el, and post-early-init.el.")
-
 (defun minimal-emacs--remove-el-file-suffix (filename)
   "Remove the Elisp file suffix from FILENAME and return it (.el, .el.gz...)."
   (let ((suffixes (mapcar (lambda (ext) (concat ".el" ext))
@@ -158,16 +151,6 @@ pre-early-init.el, and post-early-init.el.")
           (setq filename (substring filename 0 (- (length suffix))))
           (throw 'done t))))
     filename))
-
-;; (defun minimal-emacs-load-user-init (filename)
-;;   "Execute a file of Lisp code named FILENAME."
-;;   (let ((init-file (expand-file-name filename minimal-emacs-user-directory)))
-;;     (if (not minimal-emacs-load-compiled-init-files)
-;;         (load init-file :no-error (not minimal-emacs-debug) :nosuffix)
-;;       ;; Remove the file suffix (.el, .el.gz, etc.) to let the `load' function
-;;       ;; select between .el and .elc files.
-;;       (setq init-file (minimal-emacs--remove-el-file-suffix init-file))
-;;       (load init-file :no-error (not minimal-emacs-debug)))))
 
 (defun minimal-emacs-load-user-init (filename)
   "加载用户初始化文件，自动选择 .el 或 .elc"
@@ -1081,7 +1064,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 (setq switch-to-buffer-obey-display-actions nil)
 
-(setq display-buffer-alist
+(add-to-list 'display-buffer-alist
       '(("\\*TeX errors\\*"
          (display-buffer-in-side-window)
          (side . bottom)
@@ -1462,7 +1445,7 @@ permissions 为t,那么你还能编辑文件属性).
       read-buffer-completion-ignore-case t
       completion-ignore-case t)
 
-(setq read-extended-command-predicate #'command-completion-default-include-p)
+;; (setq read-extended-command-predicate #'command-completion-default-include-p)
 #+end_src
 
 ** Vertico
@@ -1660,8 +1643,6 @@ Corfu 继续负责正文中的 completion-at-point.
   :diminish)
 
 ;; Spelling
-(setq flyspell-issue-welcome-flag nil)
-
 (setq ispell-dictionary "english")
 (setq-default ispell-program-name "aspell")
 (setq-default ispell-extra-args '("--sug-mode=ultra" "--lang=en_US"))
@@ -1902,80 +1883,62 @@ Corfu 继续负责正文中的 completion-at-point.
 ** Icon
 
 #+begin_src emacs-lisp
-(require 'cl-lib)
-
-(defun my/graphic-frame-p (&optional frame)
-  "Return non-nil when FRAME is graphical."
+(defun my/gui-frame-p (&optional frame)
+  "Return non-nil when FRAME supports graphical icons."
   (display-graphic-p frame))
 
 (defun my/all-the-icons-dired-maybe-enable ()
-  "Enable Dired icons only in graphical frames."
-  (when (my/graphic-frame-p)
+  "Enable Dired icons in the current graphical frame."
+  (when (my/gui-frame-p)
     (all-the-icons-dired-mode 1)))
 
-(defun my/all-the-icons-enable-for-frame (frame)
-  "Enable graphical icon UI after creating FRAME."
-  (with-selected-frame frame
-    (when (my/graphic-frame-p frame)
-      (when (fboundp 'all-the-icons-completion-mode)
-        (all-the-icons-completion-mode 1)))))
+(defun my/kind-icon-enable ()
+  "Enable Corfu kind icons in graphical frames only."
+  (when (my/gui-frame-p)
+    (add-to-list 'corfu-margin-formatters
+                 #'kind-icon-margin-formatter)))
 
 (use-package all-the-icons
   :ensure t
   :defer t
   :config
-  ;; Unknown files use Octicons as fallback.
   (setq all-the-icons-default-file-icon
         '(all-the-icons-octicon "file-text"
           :v-adjust 0.0
           :face all-the-icons-dsilver))
 
-  ;; Avoid the old FontAwesome fallback for *Messages* buffers.
-  (setf (alist-get 'messages-buffer-mode all-the-icons-mode-icon-alist)
+  ;; Beamer verbatim output should use the same glyph metrics as TeX files.
+  (setf (alist-get "vrb" all-the-icons-extension-icon-alist nil nil #'string=)
+        '(all-the-icons-fileicon "tex" :face all-the-icons-lred))
+
+  (setf (alist-get 'messages-buffer-mode
+                   all-the-icons-mode-icon-alist)
         '(all-the-icons-octicon "comment-discussion"
           :v-adjust 0.0
           :face all-the-icons-dsilver)))
 
 (use-package all-the-icons-dired
   :ensure t
-  :after all-the-icons
-  :hook (dired-mode . my/all-the-icons-dired-maybe-enable))
+  :commands all-the-icons-dired-mode
+  :hook
+  (dired-mode . my/all-the-icons-dired-maybe-enable))
 
 (use-package all-the-icons-ibuffer
   :ensure t
-  :after all-the-icons
-  :hook (ibuffer-mode . all-the-icons-ibuffer-mode))
+  :hook
+  (ibuffer-mode . all-the-icons-ibuffer-mode))
 
 (use-package all-the-icons-completion
   :ensure t
-  :after (all-the-icons marginalia)
-  :hook (marginalia-mode . all-the-icons-completion-marginalia-setup)
+  ;; 本包会自行加载 all-the-icons；这里只等待 Marginalia。
+  :after marginalia
+  :hook
+  (marginalia-mode
+   . all-the-icons-completion-marginalia-setup)
   :config
-  (when (my/graphic-frame-p)
-    (all-the-icons-completion-mode 1))
-
-  ;; Ensure directories receive directory icons even without a trailing slash.
-  (cl-defmethod all-the-icons-completion-get-icon
-    (cand (_cat (eql file)))
-    (let* ((path (substring-no-properties cand))
-           (directory-p
-            (or (string-suffix-p "/" path)
-                (and (not (file-remote-p path))
-                     (file-directory-p
-                      (expand-file-name path default-directory))))))
-      (concat
-       (if directory-p
-           (all-the-icons-icon-for-dir
-            path
-            :face 'all-the-icons-completion-dir-face)
-         (all-the-icons-icon-for-file path))
-       " ")))
-
-  ;; Keep icon column alignment stable.
-  (cl-defmethod all-the-icons-completion-get-icon :around (cand cat)
-    (let* ((icon (string-trim-right (cl-call-next-method)))
-           (padding (max 0 (- 2 (string-width icon)))))
-      (concat (make-string padding ?\s) icon " "))))
+  ;; Vertico、Consult、find-file 等 minibuffer 补全中的图标。
+  (when (my/gui-frame-p)
+    (all-the-icons-completion-mode 1)))
 
 (use-package svg-lib
   :ensure t
@@ -1983,23 +1946,34 @@ Corfu 继续负责正文中的 completion-at-point.
 
 (use-package kind-icon
   :ensure t
-  :after (corfu svg-lib)
+  ;; kind-icon 只装饰 Corfu，不参与 minibuffer 补全图标。
+  :after corfu
   :custom
-  ;; Suitable for normal GUI Emacs and daemon + GUI emacsclient.
-  (kind-icon-use-icons (or (display-graphic-p) (daemonp)))
+  (kind-icon-use-icons t)
   (kind-icon-default-face 'corfu-default)
   (kind-icon-default-style
-   '(:padding 0 :stroke 0 :margin 0 :radius 0 :height 0.9 :scale 0.9))
+   '(:padding 0
+     :stroke 0
+     :margin 0
+     :radius 0
+     :height 0.9
+     :scale 0.9))
   :config
-  (add-to-list 'corfu-margin-formatters
-               #'kind-icon-margin-formatter))
+  (my/kind-icon-enable))
+
+(defun my/enable-icons-for-frame (frame)
+  "Enable graphical icon features for FRAME."
+  (with-selected-frame frame
+    (when (my/gui-frame-p frame)
+      ;; 支持 daemon 启动后的首个图形 emacsclient frame。
+      (when (fboundp 'all-the-icons-completion-mode)
+        (all-the-icons-completion-mode 1))
+
+      (when (featurep 'kind-icon)
+        (my/kind-icon-enable)))))
 
 (add-hook 'after-make-frame-functions
-          #'my/all-the-icons-enable-for-frame)
-
-(add-hook 'emacs-startup-hook
-          (lambda ()
-            (my/all-the-icons-enable-for-frame (selected-frame))))
+          #'my/enable-icons-for-frame)
 #+end_src
 
 ** Mode Line
@@ -2912,7 +2886,7 @@ Org files elsewhere always require confirmation."
 (setenv "TEXINPUTS"
         (concat my/tex-cls-dir "//:"
                 my/tex-assets-dir "//:"
-                (getenv "TEXINPUTS")))
+                (or (getenv "TEXINPUTS") "")))
 
 (setenv "BIBINPUTS"
         (concat my/tex-bib-dir "//:"
@@ -3287,8 +3261,8 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
   ;; /并不是必须的但是在my-auctex-after-compilation-copy-pdf函数中要".LaTeXAuto/"这个值
   (setq TeX-auto-local ".LaTeXAuto/")
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
-  (setq TeX-style-private my/tex-el-dir)
-  (setq TeX-auto-private "~/Documents/Notes/TeX/el")
+  (setq TeX-style-private my/tex-el-dir
+        TeX-auto-private my/tex-el-dir)
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
 
   ;; (if (string-match "address" flyspell-tex-command-regexp)
