@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-06 20:26:41 baojie>
+#+DATE: Time-stamp: <2026-07-07 08:00:24 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1448,44 +1448,33 @@ permissions 为t,那么你还能编辑文件属性).
 ** Completion
 
 #+begin_src emacs-lisp
-(defcustom my/minibuffer-completion-frontend 'vertico
-  "Minibuffer completion frontend.
+;; 以下在默使用认completion 用
+;;   (setq completion-auto-help 'visible
+;;         completion-auto-select nil
+;;         completion-show-help nil
+;;         completions-header-format nil
+;;         completions-format 'vertical
+;;         completions-group t
+;;         completions-max-height 11
+;;         completions-sort 'historical)
 
-Use `vertico' for Vertico and its category-aware multiform display.
-Use `default' to fall back to the built-in Emacs completion UI.  Corfu is
-independent of this setting and continues to provide in-buffer completion."
-  :type '(choice (const :tag "Vertico" vertico)
-                 (const :tag "Built-in Emacs completion" default))
-  :group 'completion)
-
-;; These settings are only for the built-in fallback frontend.  Vertico has
-;; its own display, selection and sizing controls below.
-(when (eq my/minibuffer-completion-frontend 'default)
-  (setq completion-auto-help 'visible
-        completion-auto-select nil
-        completion-show-help nil
-        completions-header-format nil
-        completions-format 'vertical
-        completions-group t
-        completions-max-height 11
-        completions-sort 'historical))
-
-(setq read-buffer-completion-ignore-case t)
-(setq read-file-name-completion-ignore-case t)
+(setq read-file-name-completion-ignore-case t
+      read-buffer-completion-ignore-case t
+      completion-ignore-case t)
 
 (setq read-extended-command-predicate #'command-completion-default-include-p)
 #+end_src
 
 ** Vertico
 
-Vertico 只负责 minibuffer；Corfu 继续负责正文中的
-=completion-at-point=。如果需要退回 Emacs 原生 minibuffer 补全，将
-=my/minibuffer-completion-frontend= 改为 =default= 并重启 Emacs。
+Vertico 只负责 minibuffer；
+Corfu 继续负责正文中的 completion-at-point.
+如果需要退回 Emacs 原生 minibuffer 补全，将 my/minibuffer-completion-frontend 改为 default 并重启 Emacs
 
 #+begin_src emacs-lisp
 (use-package vertico
   :ensure t
-  :if (eq my/minibuffer-completion-frontend 'vertico)
+  ;; :if (eq my/minibuffer-completion-frontend 'vertico)
   :bind
   (("M-R" . vertico-repeat)
    :map vertico-map
@@ -1524,10 +1513,12 @@ Vertico 只负责 minibuffer；Corfu 继续负责正文中的
                   (car args))
           (cdr args)))
 
-  (unless (advice-member-p #'my/vertico-crm-indicator
-                           #'completing-read-multiple)
-    (advice-add #'completing-read-multiple
-                :filter-args #'my/vertico-crm-indicator))
+  (when (< emacs-major-version 31)
+    (unless (advice-member-p #'my/vertico-crm-indicator
+                             #'completing-read-multiple)
+      (advice-add #'completing-read-multiple
+                  :filter-args
+                  #'my/vertico-crm-indicator)))
 
   (setq vertico-multiform-commands
         '((consult-line
@@ -1547,9 +1538,8 @@ Vertico 只负责 minibuffer；Corfu 继续负责正文中的
   (setq vertico-multiform-categories
         '((tex-macro grid)
           (symbol (vertico-sort-function . vertico-sort-alpha))
-          (file
-           (vertico-sort-function . vertico-sort-directories-first)
-           (:keymap . vertico-directory-map)))))
+          (file (vertico-sort-function . vertico-sort-directories-first)
+                (:keymap . vertico-directory-map)))))
 
 ;; AUCTeX 14.1.2 does not attach a completion category to the dynamic
 ;; completion table used by `TeX-insert-macro' (`C-c C-m').  Add a dedicated
