@@ -3161,6 +3161,27 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
   (unless (or (my/TeX--delete-left-match (point))
               (my/TeX--delete-right-match (point)))
     (call-interactively 'backward-delete-char-untabify)))
+
+(defun my/latex-delete-dwim ()
+  "Delete active region or use custom LaTeX pair deletion."
+  (interactive)
+  (if (use-region-p)
+      (delete-region (region-beginning) (region-end))
+    (my/TeX--delete-pair)))
+
+(defun my/latex-keymap-setup ()
+  "Set local keys for the current LaTeX buffer."
+  (local-set-key (kbd "<tab>") #'my/latex-tab)
+  (local-set-key (kbd "TAB") #'my/latex-tab)
+  (local-set-key (kbd "DEL") #'my/latex-delete-dwim)
+  (local-set-key (kbd "<S-s-mouse-1>") #'TeX-view)
+
+  ;; Local Consult jump/search prefix.  Keep RefTeX toc/ref/cite on the
+  ;; defaults: `C-c =', `C-c )' and `C-c ['.
+  (local-set-key (kbd "C-c j l") #'consult-line)
+  (local-set-key (kbd "C-c j o") #'consult-outline)
+  (local-set-key (kbd "C-c j i") #'consult-imenu)
+  (local-set-key (kbd "C-c j e") #'consult-flymake))
 #+end_src
 
 #+begin_src emacs-lisp :tangle no
@@ -3334,23 +3355,7 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
     (interactive)
     ;; (my/auctex-auto-engine)                  ; 新版引擎检测
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
-
-    (local-set-key (kbd "<tab>") #'my/latex-tab)
-    (local-set-key (kbd "TAB") #'my/latex-tab)
-    (local-set-key (kbd "<S-s-mouse-1>") 'TeX-view)
-    (local-set-key (kbd "C-c j l") #'consult-line)
-    (local-set-key (kbd "C-c j o") #'consult-outline)
-    (local-set-key (kbd "C-c j i") #'consult-imenu)
-    (local-set-key (kbd "C-c j e") #'consult-flymake)
-    (local-set-key (kbd "C-c j t") #'reftex-toc)
-    (local-set-key (kbd "C-c j r") #'reftex-reference)
-    (local-set-key (kbd "C-c j c") #'reftex-citation)
-
-    (local-set-key (kbd "DEL") (lambda ()
-                                 (interactive)
-                                 (if (use-region-p)
-                                     (delete-region (region-beginning) (region-end))
-                                   (my/TeX--delete-pair))))
+    (my/latex-keymap-setup)
 
     ;; (my/translate-fullwidth-to-halfwidth)
 
