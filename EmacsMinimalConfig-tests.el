@@ -90,7 +90,8 @@
 (ert-deftest my/auctex-copy-pdf-same-path-is-safe ()
   (let* ((dir (make-temp-file "auctex-copy-same-" t))
          (default-directory dir)
-         (source (expand-file-name "test.pdf" dir)))
+         (source (expand-file-name "test.pdf" dir))
+         (TeX-output-dir "."))
     (unwind-protect
         (progn
           (with-temp-file source (insert "pdf"))
@@ -99,15 +100,30 @@
       (delete-directory dir t))))
 
 (ert-deftest my/auctex-copy-pdf-to-default-directory ()
-  (let* ((source-dir (make-temp-file "auctex-copy-source-" t))
-         (target-dir (make-temp-file "auctex-copy-target-" t))
+  (let* ((target-dir (make-temp-file "auctex-copy-target-" t))
+         (output-dir (expand-file-name ".LaTeXOut" target-dir))
+         (source (expand-file-name "test.pdf" output-dir))
+         (default-directory target-dir)
+         (TeX-output-dir ".LaTeXOut/"))
+    (unwind-protect
+        (progn
+          (make-directory output-dir)
+          (with-temp-file source (insert "pdf"))
+          (my/auctex-copy-pdf-to-master-dir source)
+          (should (file-exists-p (expand-file-name "test.pdf" target-dir))))
+      (delete-directory target-dir t))))
+
+(ert-deftest my/auctex-copy-pdf-ignores-non-output-pdf ()
+  (let* ((target-dir (make-temp-file "auctex-copy-ignore-" t))
+         (source-dir (make-temp-file "auctex-copy-other-" t))
          (source (expand-file-name "test.pdf" source-dir))
-         (default-directory target-dir))
+         (default-directory target-dir)
+         (TeX-output-dir ".LaTeXOut/"))
     (unwind-protect
         (progn
           (with-temp-file source (insert "pdf"))
           (my/auctex-copy-pdf-to-master-dir source)
-          (should (file-exists-p (expand-file-name "test.pdf" target-dir))))
+          (should-not (file-exists-p (expand-file-name "test.pdf" target-dir))))
       (delete-directory source-dir t)
       (delete-directory target-dir t))))
 

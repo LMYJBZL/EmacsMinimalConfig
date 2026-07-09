@@ -3371,24 +3371,36 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
     (flymake-mode)
     (yas-minor-mode)))
 
-;; 编译后将 PDF 从 `TeX-output-dir' 复制到 master 文件所在目录。
+;; Keep auxiliary build files in `TeX-output-dir', but copy the final PDF
+;; beside the master file for Finder, sharing, and quick manual access.
 (defun my/auctex-copy-pdf-to-master-dir (output-filename)
-  "Copy compiled PDF OUTPUT-FILENAME beside the master TeX file."
-  (when (and (string-equal (file-name-extension output-filename) "pdf")
-             (file-exists-p output-filename))
-    (let* ((source (expand-file-name output-filename))
-           (master-buffer (and (boundp 'TeX-command-buffer)
-                               (buffer-live-p TeX-command-buffer)
-                               TeX-command-buffer))
-           (master-dir (if master-buffer
-                           (with-current-buffer master-buffer
-                             (TeX-master-directory))
-                         default-directory))
-           (target (expand-file-name (file-name-nondirectory source)
-                                     master-dir)))
-      (unless (and (file-exists-p target)
-                   (file-equal-p source target))
-        (copy-file source target t)))))
+  "Copy final PDF OUTPUT-FILENAME from `TeX-output-dir' beside the master file."
+  (let ((source (and output-filename (expand-file-name output-filename))))
+    (when (and source
+               (string-equal (downcase (or (file-name-extension source) ""))
+                             "pdf")
+               (file-exists-p source))
+      (let* ((master-buffer (and (boundp 'TeX-command-buffer)
+                                 (buffer-live-p TeX-command-buffer)
+                                 TeX-command-buffer))
+             (master-dir (if master-buffer
+                             (with-current-buffer master-buffer
+                               (TeX-master-directory))
+                           default-directory))
+             (output-dir (file-name-as-directory
+                          (expand-file-name
+                           (if master-buffer
+                               (with-current-buffer master-buffer
+                                 (or TeX-output-dir "."))
+                             (or (and (boundp 'TeX-output-dir) TeX-output-dir)
+                                 "."))
+                           master-dir)))
+             (target (expand-file-name (file-name-nondirectory source)
+                                       master-dir)))
+        (when (and (file-in-directory-p source output-dir)
+                   (not (and (file-exists-p target)
+                             (file-equal-p source target))))
+          (copy-file source target t))))))
 
 (add-hook 'TeX-after-compilation-finished-functions
           #'my/auctex-copy-pdf-to-master-dir)
