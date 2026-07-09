@@ -916,6 +916,7 @@ this stage of initialization."
   (recentf-max-saved-items 100)
   (recentf-exclude
    (list "^/\\(?:ssh\\|su\\|sudo\\)?:"
+         "/\\.LaTeX\\(?:Auto\\|Out\\)/"
          "\\.\\(gz\\|png\\|jpg\\|elc\\|pdf\\)$"))
   :config
   (defconst my/recentf-keep-paths
@@ -1431,16 +1432,6 @@ permissions 为t,那么你还能编辑文件属性).
 ** Completion
 
 #+begin_src emacs-lisp
-;; 以下在默使用认completion 用
-;;   (setq completion-auto-help 'visible
-;;         completion-auto-select nil
-;;         completion-show-help nil
-;;         completions-header-format nil
-;;         completions-format 'vertical
-;;         completions-group t
-;;         completions-max-height 11
-;;         completions-sort 'historical)
-
 (setq read-file-name-completion-ignore-case t
       read-buffer-completion-ignore-case t
       completion-ignore-case t)
@@ -1452,12 +1443,10 @@ permissions 为t,那么你还能编辑文件属性).
 
 Vertico 只负责 minibuffer；
 Corfu 继续负责正文中的 completion-at-point.
-如果需要退回 Emacs 原生 minibuffer 补全，将 my/minibuffer-completion-frontend 改为 default 并重启 Emacs
 
 #+begin_src emacs-lisp
 (use-package vertico
   :ensure t
-  ;; :if (eq my/minibuffer-completion-frontend 'vertico)
   :bind
   (("M-R" . vertico-repeat)
    :map vertico-map
@@ -1504,9 +1493,7 @@ Corfu 继续负责正文中的 completion-at-point.
                   #'my/vertico-crm-indicator)))
 
   (setq vertico-multiform-commands
-        '((consult-line
-           reverse
-           (vertico-sort-override-function . vertico-sort-alpha))
+        '((consult-line reverse)
           (consult-outline buffer)
           (consult-buffer (vertico-resize . t) reverse)
           (describe-symbol
@@ -1610,7 +1597,7 @@ Corfu 继续负责正文中的 completion-at-point.
   :config
   (setq flymake-show-diagnostics-at-end-of-line nil)
   (setq flymake-wrap-around nil)
-  (setq flymake-no-changes-timeout nil)
+  (setq flymake-no-changes-timeout 0.8)
   (defun toggle-flymake-diagnostics-at-eol ()
     "Toggle the display of Flymake diagnostics at the end of the line
       and restart Flymake to apply the changes."
@@ -1632,29 +1619,40 @@ Corfu 继续负责正文中的 completion-at-point.
 ** Flyspell
 
 #+begin_src emacs-lisp
-;; Improves flyspell performance by preventing messages from being displayed for
-;; each word when checking the entire buffer.
-(setq flyspell-issue-message-flag nil)
-(setq flyspell-issue-welcome-flag nil)
-#+end_src
-
-#+begin_src emacs-lisp :tangle no
 (use-package flyspell
-  :diminish)
+  :ensure nil
+  :hook ((text-mode . my/flyspell-mode-if-available)
+         (LaTeX-mode . my/flyspell-mode-if-available))
+  :init
+  (require 'seq)
 
-;; Spelling
-(setq ispell-dictionary "english")
-(setq-default ispell-program-name "aspell")
-(setq-default ispell-extra-args '("--sug-mode=ultra" "--lang=en_US"))
-(setq spell-full-directory "~/.ispelldic")
-(setq ispell-personal-dictionary "~/.ispelldic/.pws")
+  (defvar my/flyspell-program-candidates '("aspell" "hunspell" "ispell")
+    "Spell checker executables tried before enabling Flyspell.")
 
-;; Dictionary
-(setq +lookup-dictionary-provider 'define-word)
+  (defun my/flyspell-available-program ()
+    "Return the first available spell checker executable."
+    (seq-find #'executable-find my/flyspell-program-candidates))
 
-(add-to-list 'ispell-skip-region-alist '(":\\(PROPERTIES\\|LOGBOOK\\):" . ":END:"))
-(add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_SRC" . "#\\+END_SRC"))
-(add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_EXAMPLE" . "#\\+END_EXAMPLE"))
+  (defun my/flyspell-mode-if-available ()
+    "Enable `flyspell-mode' only when a spell checker is available."
+    (when-let ((program (my/flyspell-available-program)))
+      (setq-local ispell-program-name program)
+      (when (string= program "aspell")
+        (setq-local ispell-extra-args '("--sug-mode=ultra" "--lang=en_US")))
+      (flyspell-mode 1)))
+
+  ;; Let Flyspell ignore LaTeX commands and check only text-like parts.
+  (put 'latex-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
+  (put 'LaTeX-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
+  :config
+  ;; Avoid noisy minibuffer messages during whole-buffer checks.
+  (setq flyspell-issue-message-flag nil
+        flyspell-issue-welcome-flag nil
+        ispell-silently-savep t)
+
+  (add-to-list 'ispell-skip-region-alist '(":\\(PROPERTIES\\|LOGBOOK\\):" . ":END:"))
+  (add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_SRC" . "#\\+END_SRC"))
+  (add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_EXAMPLE" . "#\\+END_EXAMPLE")))
 #+end_src
 
 ** Ispell
@@ -1663,8 +1661,6 @@ Corfu 继续负责正文中的 completion-at-point.
 ;; In Emacs 30 and newer, disable Ispell completion to avoid annotation errors
 ;; when no `ispell' dictionary is set.
 (setq text-mode-ispell-word-completion nil)
-
-(setq ispell-silently-savep t)
 #+end_src
 
 ** Ibuffer
@@ -2400,8 +2396,8 @@ Corfu 继续负责正文中的 completion-at-point.
          ("M-g m" . consult-mark)
          ("M-g i" . consult-imenu))
   :config
-  ;; (add-hook 'completion-list-mode-hook #'consult-preview-at-point-mode)
-  ;; (add-hook 'embark-collect-mode-hook #'consult-preview-at-point-mode)
+  (add-hook 'completion-list-mode-hook #'consult-preview-at-point-mode)
+  (add-hook 'embark-collect-mode-hook #'consult-preview-at-point-mode)
 
   (consult-customize
    consult-theme :preview-key '(:debounce 0.2 any)
@@ -2432,6 +2428,10 @@ Corfu 继续负责正文中的 completion-at-point.
     (let ((file-path (if (stringp file) file (cdr file))))
       (when (and (stringp file-path) (not (string-empty-p file-path)))
         (expand-file-name file-path))))
+
+  (defun my/recentf-latex-generated-p (file-path)
+    "Return non-nil when FILE-PATH is a generated LaTeX cache/output file."
+    (string-match-p "/\\.LaTeX\\(?:Auto\\|Out\\)/" file-path))
 
   (defun my/recentf-unique-directory-suffix (file-path files)
     "为 FILE-PATH 生成相对 FILES 中同名文件的最短唯一路径后缀。"
@@ -2487,11 +2487,9 @@ Corfu 继续负责正文中的 completion-at-point.
   (defun my/recentf-display-name (file-path files duplicate-table)
   "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
   (let ((base-name (file-name-nondirectory file-path)))
-    (if (> (gethash base-name duplicate-table 0) 1)
-        (concat base-name "    <"
-                (my/recentf-unique-directory-suffix file-path files)
-                ">")
-      base-name)))
+    (concat base-name "    <"
+            (my/recentf-unique-directory-suffix file-path files)
+            ">")))
 
   (defun my-consult--source-recentf-items ()
     "为 Consult 生成 recentf 项目。"
@@ -2502,7 +2500,9 @@ Corfu 继续负责正文中的 completion-at-point.
           items)
       (dolist (file recentf-list)
         (let ((file-path (my/recentf-normalize-path file)))
-          (unless (or (null file-path) (gethash file-path ht))
+          (unless (or (null file-path)
+                      (my/recentf-latex-generated-p file-path)
+                      (gethash file-path ht))
             (push file-path normalized-files)
             (puthash (file-name-nondirectory file-path)
                      (1+ (gethash (file-name-nondirectory file-path)
@@ -2512,12 +2512,14 @@ Corfu 继续负责正文中的 completion-at-point.
         ;; 修复：recentf-list 直接是文件路径字符串，不是 cons cell
         (let ((file-path (my/recentf-normalize-path file)))
           ;; 跳过已在缓冲区的文件
-          (unless (or (null file-path) (gethash file-path ht))
-            (push (propertize (my/recentf-display-name
-                               file-path
-                               normalized-files
-                               duplicate-table)
-                              'multi-category `(file . ,file-path))
+          (unless (or (null file-path)
+                      (my/recentf-latex-generated-p file-path)
+                      (gethash file-path ht))
+            (push (cons (my/recentf-display-name
+                         file-path
+                         normalized-files
+                         duplicate-table)
+                        file-path)
                   items))))
       (nreverse items)))
 
@@ -2963,17 +2965,28 @@ Stop when leaving the current math environment."
         t)
        (t nil)))))
 
+(defun my/latex-completion-dwim ()
+  "Complete at point in LaTeX buffers.
+Corfu handles the popup when `corfu-mode' is active; otherwise this falls back
+to the configured Emacs completion UI."
+  (when (or (thing-at-point 'symbol)
+            (looking-back "\\\\[[:alpha:]@]*" (line-beginning-position)))
+    (ignore-errors
+      (completion-at-point))))
+
 (defun my/latex-tab ()
   "Smart `TAB' for LaTeX.
 
 Priority:
 1. Indent current line.
 2. Expand a yasnippet or jump to its next field.
-3. In math, jump through `{...}' arguments and finally leave math."
+3. In math, jump through `{...}' arguments and finally leave math.
+4. Complete at point with Corfu/completion-at-point."
   (interactive)
   (unless (or (my/latex-indent-dwim)
               (my/latex-yas-dwim)
-              (my/latex-math-jump))
+              (my/latex-math-jump)
+              (my/latex-completion-dwim))
     (indent-for-tab-command)))
 #+end_src
 
@@ -3265,11 +3278,6 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
         TeX-auto-private my/tex-el-dir)
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
 
-  ;; (if (string-match "address" flyspell-tex-command-regexp)
-  ;;     (setq flyspell-tex-command-regexp flyspell-tex-command-regexp)
-  ;;   (setq flyspell-tex-command-regexp (concat (substring flyspell-tex-command-regexp 0 83) "\\|address\\|author\\|title\\|thanks\\|bibliography\\(style\\)?\\|email\\|setlist\\|newtheorem\\|usetikzlibrary" (substring flyspell-tex-command-regexp 83))))
-  ;; (put 'latex-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
-
   :config
   (setq TeX-parse-self t
         TeX-auto-save t
@@ -3285,6 +3293,10 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
         TeX-clean-confirm nil
         TeX-save-query nil)
 
+  ;; AUCTeX's Flymake backend calls ChkTeX.  Keep the warning filters from the
+  ;; old manual ChkTeX command, but attach them to the live Flymake checker.
+  (setq LaTeX-flymake-chktex-options '("-n2" "-n3" "-n9" "-n18"))
+
   (when (file-exists-p "/Applications/Skim.app/Contents/SharedSupport/displayline")
     (setq TeX-view-program-selection '((output-pdf "Skim"))
           TeX-view-program-list
@@ -3297,8 +3309,6 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
                 font-latex-fontify-sectioning 'color)
   (setq LaTeX-item-indent 2)
   ;; (setq TeX-ispell-extend-skip-list t)
-
-  ;; (setf (cadr (assoc "ChkTeX" TeX-command-list)) "chktex -q -v6 -n2 -n3 -n9 -n18 %s")
 
   ;; (add-hook 'find-file-hook
   ;;           (lambda ()
@@ -3328,6 +3338,13 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
     (local-set-key (kbd "<tab>") #'my/latex-tab)
     (local-set-key (kbd "TAB") #'my/latex-tab)
     (local-set-key (kbd "<S-s-mouse-1>") 'TeX-view)
+    (local-set-key (kbd "C-c j l") #'consult-line)
+    (local-set-key (kbd "C-c j o") #'consult-outline)
+    (local-set-key (kbd "C-c j i") #'consult-imenu)
+    (local-set-key (kbd "C-c j e") #'consult-flymake)
+    (local-set-key (kbd "C-c j t") #'reftex-toc)
+    (local-set-key (kbd "C-c j r") #'reftex-reference)
+    (local-set-key (kbd "C-c j c") #'reftex-citation)
 
     (local-set-key (kbd "DEL") (lambda ()
                                  (interactive)
@@ -3335,9 +3352,6 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
                                      (delete-region (region-beginning) (region-end))
                                    (my/TeX--delete-pair))))
 
-    ;; (add-hook 'after-save-hook 'flyspell-buffer nil t)
-    ;; (setq flyspell-generic-check-word-predicate 'tex-mode-flyspell-verify)
-    ;; (setq-default ispell-parser 'tex)
     ;; (my/translate-fullwidth-to-halfwidth)
 
     (LaTeX-math-mode)
@@ -3348,7 +3362,6 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
     ;; (turn-on-auto-fill)
     ;; (turn-on-reftex)
     ;; (predictive-mode)
-    ;; (flyspell-mode)
     ;; (eglot-ensure)
     (flymake-mode)
     (yas-minor-mode)))
