@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-07 09:07:32 baojie>
+#+DATE: Time-stamp: <2026-07-17 10:35:28 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -554,6 +554,9 @@ this stage of initialization."
 ** Package.el
 
 #+begin_src emacs-lisp
+(defvar my/package-refresh-on-missing-use-package nil
+  "Non-nil means refresh package archives at startup if `use-package' is missing.")
+
 (when (and (bound-and-true-p minimal-emacs-package-initialize-and-refresh)
            (not (bound-and-true-p byte-compile-current-file))
            (not (or (fboundp 'straight-use-package)
@@ -561,9 +564,13 @@ this stage of initialization."
   (require 'package)
   (package-initialize)
   (unless (package-installed-p 'use-package)
-    (unless package-archive-contents
+    (when (and my/package-refresh-on-missing-use-package
+               (not package-archive-contents))
       (package-refresh-contents))
-    (package-install 'use-package))
+    (if package-archive-contents
+        (package-install 'use-package)
+      (user-error
+       "use-package is missing; run M-x package-refresh-contents, then restart Emacs")))
   (require 'use-package))
 #+end_src
 
@@ -735,9 +742,22 @@ this stage of initialization."
 ** Display line numbers
 
 #+begin_src emacs-lisp
+(defvar my/line-number-large-file-size (* 1024 1024)
+  "Disable line numbers for files larger than this many bytes.")
+
+(defvar my/line-number-large-buffer-lines 8000
+  "Disable line numbers for buffers with more than this many lines.")
+
+(defun my/display-line-numbers-mode-maybe ()
+  "Enable line numbers unless the current buffer is large."
+  (unless (or (> (buffer-size) my/line-number-large-file-size)
+              (> (count-lines (point-min) (point-max))
+                 my/line-number-large-buffer-lines))
+    (display-line-numbers-mode 1)))
+
 (use-package display-line-numbers
   :ensure nil
-  :hook ((prog-mode org-mode LaTeX-mode) . display-line-numbers-mode)
+  :hook ((prog-mode org-mode LaTeX-mode) . my/display-line-numbers-mode-maybe)
   :custom
   (display-line-numbers-width 5)
   (display-line-numbers-widen t))
@@ -1495,7 +1515,7 @@ Corfu 继续负责正文中的 completion-at-point.
   (setq vertico-multiform-commands
         '((consult-line reverse)
           (consult-outline buffer)
-          (consult-buffer (vertico-resize . t) reverse)
+          (consult-buffer (vertico-resize . t))
           (describe-symbol
            (vertico-sort-function . vertico-sort-alpha))
           (helpful-symbol
@@ -1804,22 +1824,24 @@ Corfu 继续负责正文中的 completion-at-point.
 (use-package exec-path-from-shell
   :if (and (or (display-graphic-p) (daemonp))
            (eq system-type 'darwin)) ; macOS only
-  :demand t
+  :defer 1
   :functions exec-path-from-shell-initialize
+  :init
+  (setq exec-path-from-shell-variables
+        '("PATH"
+          "MANPATH"
+          "TMPDIR"
+          "SSH_AUTH_SOCK"
+          "SSH_AGENT_PID"
+          "GPG_AGENT_INFO"
+          ;; "FZF_DEFAULT_COMMAND" "FZF_DEFAULT_OPTS" ; fzf
+          ;; "VIRTUAL_ENV" ; Python
+          ;; "GOPATH" "GOROOT" "GOBIN" ; Go
+          ;; "CARGO_HOME" "RUSTUP_HOME" ; Rust
+          ;; "NVM_DIR" "NODE_PATH" ; Node/JS
+          "LANG"
+          "LC_CTYPE"))
   :config
-  (dolist (var '("TMPDIR"
-                 "SSH_AUTH_SOCK"
-                 "SSH_AGENT_PID"
-                 "GPG_AGENT_INFO"
-                 ;; "FZF_DEFAULT_COMMAND" "FZF_DEFAULT_OPTS" ; fzf
-                 ;; "VIRTUAL_ENV" ; Python
-                 ;; "GOPATH" "GOROOT" "GOBIN" ; Go
-                 ;; "CARGO_HOME" "RUSTUP_HOME" ; Rust
-                 ;; "NVM_DIR" "NODE_PATH" ; Node/JS
-                 "LANG"
-                 "LC_CTYPE"))
-    (add-to-list 'exec-path-from-shell-variables var))
-  ;; Initialize
   (exec-path-from-shell-initialize))
 #+end_src
 
@@ -2165,7 +2187,10 @@ Corfu 继续负责正文中的 completion-at-point.
 
   (defun my/enable-rime-in-writing-modes ()
     "在日常写作模式中自动启用 Rime。"
-    (unless (equal current-input-method "rime")
+    (unless (or (equal current-input-method "rime")
+                (minibufferp)
+                (derived-mode-p 'special-mode 'help-mode 'messages-buffer-mode
+                                'log-edit-mode))
       (activate-input-method "rime")))
 
   (dolist (hook '(text-mode-hook org-mode-hook LaTeX-mode-hook))
@@ -2261,7 +2286,19 @@ Corfu 继续负责正文中的 completion-at-point.
           rime-predicate-space-after-cc-p
           rime-predicate-tex-math-or-command-p))
 
-  (define-key rime-mode-map (kbd "C-`") 'rime-force-enable)
+  (defun my/rime-force-enable-dwim ()
+    "确保 Rime 已启用，并临时强制下一次输入为中文。"
+    (interactive)
+    (unless (equal current-input-method "rime")
+      (activate-input-method "rime"))
+    (when (fboundp 'rime-force-enable)
+      (rime-force-enable))
+    (when (fboundp 'my/rime-refresh-cursor-color)
+      (my/rime-refresh-cursor-color))
+    (force-mode-line-update))
+
+  (keymap-global-set "C-`" #'my/rime-force-enable-dwim)
+  (define-key rime-mode-map (kbd "C-`") #'my/rime-force-enable-dwim)
 
   (when (display-graphic-p)
     (set-face-attribute 'rime-default-face nil
