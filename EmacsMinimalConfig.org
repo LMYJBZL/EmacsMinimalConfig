@@ -2692,7 +2692,42 @@ git push -u origin main
 #+begin_src emacs-lisp
 (use-package magit
   :ensure t
-  :commands (magit-status magit-file-delete))
+  :commands (magit-status magit-file-delete)
+  :config
+  (defvar my/magit-key-hints-buffer-name "*Magit Keys*")
+
+  (defconst my/magit-key-hints
+    '(("s" "stage"          "u" "unstage"        "k" "discard")
+      ("c c" "commit"       "P p" "push"         "F p" "pull")
+      ("b b" "checkout"     "b c" "new branch"   "m m" "merge")
+      ("l l" "log"          "d d" "diff"         "g" "refresh")
+      ("TAB" "section"      "RET" "visit"        "q" "quit"))
+    "Compact Magit key hints shown below `magit-status'.")
+
+  (defun my/magit-key-hints-buffer ()
+    "Return a refreshed buffer containing compact Magit key hints."
+    (with-current-buffer (get-buffer-create my/magit-key-hints-buffer-name)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "Magit keys\n\n")
+        (dolist (row my/magit-key-hints)
+          (pcase-let ((`(,k1 ,d1 ,k2 ,d2 ,k3 ,d3) row))
+            (insert (format "%-4s %-12s  %-4s %-12s  %-4s %s\n"
+                            k1 d1 k2 d2 k3 d3)))))
+      (special-mode)
+      (setq-local window-size-fixed 'height)
+      (local-set-key (kbd "q") #'quit-window)
+      (current-buffer)))
+
+  (defun my/magit-show-key-hints ()
+    "Show compact Magit key hints below the status window."
+    (display-buffer
+     (my/magit-key-hints-buffer)
+     '((display-buffer-reuse-window display-buffer-below-selected)
+       (window-height . fit-window-to-buffer)
+       (dedicated . t))))
+
+  (add-hook 'magit-status-mode-hook #'my/magit-show-key-hints))
 #+end_src
 
 ** Treemacs
