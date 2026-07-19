@@ -2711,7 +2711,19 @@ git push -u origin main
     (when (derived-mode-p 'magit-status-mode)
       (when-let ((window (get-buffer-window (current-buffer) t)))
         (fit-window-to-buffer window nil 5))))
-  :hook (magit-refresh-buffer . my/magit-fit-status-window)
+  (defun my/magit-refresh-vc-mode-lines ()
+    "Refresh VC mode-line state for file buffers in the current Git repository."
+    (when-let ((root (and (fboundp 'magit-toplevel)
+                          (magit-toplevel))))
+      (dolist (buffer (buffer-list))
+        (with-current-buffer buffer
+          (when (and buffer-file-name
+                     (file-in-directory-p buffer-file-name root)
+                     (bound-and-true-p vc-mode))
+            (vc-refresh-state)
+            (force-mode-line-update))))))
+  :hook ((magit-refresh-buffer . my/magit-fit-status-window)
+         (magit-post-refresh . my/magit-refresh-vc-mode-lines))
   :custom
   (magit-display-buffer-function #'my/magit-display-buffer-fit-window))
 #+end_src
