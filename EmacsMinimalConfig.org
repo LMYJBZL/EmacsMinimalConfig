@@ -1127,7 +1127,7 @@ Enables Emacs to remember the last location within a file upon reopening.
         ;; Magit 状态窗口：在当前选中窗口下方打开，不占用侧边区域
         ((derived-mode . magit-status-mode)
          (display-buffer-reuse-window display-buffer-below-selected)
-         (window-height . 0.33)
+         (window-height . fit-window-to-buffer)
          (inhibit-same-window . nil))   ; 允许在当前窗口重用，但优先在下侧打开
         ))
 
@@ -2167,6 +2167,19 @@ Corfu 继续负责正文中的 completion-at-point.
 #+begin_src emacs-lisp
 (use-package rime
   :ensure t
+  :preface
+  (defun my/rime-force-enable-dwim ()
+    "Ensure Rime is active and force the next input to Chinese."
+    (interactive)
+    (unless (equal current-input-method "rime")
+      (activate-input-method "rime"))
+    (when (fboundp 'rime-force-enable)
+      (rime-force-enable))
+    (when (fboundp 'my/rime-refresh-cursor-color)
+      (my/rime-refresh-cursor-color))
+    (force-mode-line-update))
+  :init
+  (keymap-global-set "C-`" #'my/rime-force-enable-dwim)
   :custom
   (default-input-method "rime")
   (rime-posframe-properties
@@ -2190,7 +2203,7 @@ Corfu 继续负责正文中的 completion-at-point.
     (unless (or (equal current-input-method "rime")
                 (minibufferp)
                 (derived-mode-p 'special-mode 'help-mode 'messages-buffer-mode
-                                'log-edit-mode))
+                                'log-edit-mode 'git-commit-mode))
       (activate-input-method "rime")))
 
   (dolist (hook '(text-mode-hook org-mode-hook LaTeX-mode-hook))
@@ -2286,18 +2299,6 @@ Corfu 继续负责正文中的 completion-at-point.
           rime-predicate-space-after-cc-p
           rime-predicate-tex-math-or-command-p))
 
-  (defun my/rime-force-enable-dwim ()
-    "确保 Rime 已启用，并临时强制下一次输入为中文。"
-    (interactive)
-    (unless (equal current-input-method "rime")
-      (activate-input-method "rime"))
-    (when (fboundp 'rime-force-enable)
-      (rime-force-enable))
-    (when (fboundp 'my/rime-refresh-cursor-color)
-      (my/rime-refresh-cursor-color))
-    (force-mode-line-update))
-
-  (keymap-global-set "C-`" #'my/rime-force-enable-dwim)
   (define-key rime-mode-map (kbd "C-`") #'my/rime-force-enable-dwim)
 
   (when (display-graphic-p)
@@ -2692,7 +2693,27 @@ git push -u origin main
 #+begin_src emacs-lisp
 (use-package magit
   :ensure t
-  :commands (magit-status magit-file-delete))
+  :commands (magit-status magit-file-delete)
+  :bind (("C-x g" . magit-status))
+  :preface
+  (defun my/magit-display-buffer-fit-window (buffer)
+    "Display Magit BUFFER below the selected window and fit its height."
+    (let ((window (display-buffer
+                   buffer
+                   '((display-buffer-reuse-window display-buffer-below-selected)
+                     (inhibit-same-window . t)
+                     (window-height . fit-window-to-buffer)))))
+      (when (window-live-p window)
+        (fit-window-to-buffer window nil 5))
+      window))
+  (defun my/magit-fit-status-window ()
+    "Fit the visible Magit status window after its contents refresh."
+    (when (derived-mode-p 'magit-status-mode)
+      (when-let ((window (get-buffer-window (current-buffer) t)))
+        (fit-window-to-buffer window nil 5))))
+  :hook (magit-refresh-buffer . my/magit-fit-status-window)
+  :custom
+  (magit-display-buffer-function #'my/magit-display-buffer-fit-window))
 #+end_src
 
 ** Treemacs
