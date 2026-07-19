@@ -1085,51 +1085,46 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 (setq switch-to-buffer-obey-display-actions nil)
 
-(add-to-list 'display-buffer-alist
-      '(("\\*TeX errors\\*"
-         (display-buffer-in-side-window)
-         (side . bottom)
-         (slot . 0)
-         (window-height . 0.25)
-         (dedicated . t))
+(setq display-buffer-alist
+      (append
+       '(("\\*TeX errors\\*"
+          (display-buffer-in-side-window)
+          (side . bottom)
+          (slot . 0)
+          (window-height . 0.25)
+          (dedicated . t))
 
-        ("\\*TeX Help\\*"
-         (display-buffer-in-side-window)
-         (side . bottom)
-         (slot . 1)
-         (window-height . 0.25)
-         (dedicated . t))
+         ("\\*TeX Help\\*"
+          (display-buffer-in-side-window)
+          (side . bottom)
+          (slot . 1)
+          (window-height . 0.25)
+          (dedicated . t))
 
-        ("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
-         (display-buffer-in-side-window)
-         (side . bottom)
-         (slot . 2)
-         (window-height . 0.25)
-         (dedicated . t))
+         ("\\*\\(Warnings\\|Compile-Log\\|Messages\\)\\*"
+          (display-buffer-in-side-window)
+          (side . bottom)
+          (slot . 2)
+          (window-height . 0.25)
+          (dedicated . t))
 
-        ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
-         (display-buffer-in-side-window)
-         (side . right)
-         (slot . 0)
-         (window-width . 0.33)
-         (dedicated . t))
+         ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
+          (display-buffer-in-side-window)
+          (side . right)
+          (slot . 0)
+          (window-width . 0.33)
+          (dedicated . t))
 
-        ("\\*\\(Embark Collect\\|xref\\|grep\\|Occur\\)\\*"
-         (display-buffer-in-side-window)
-         (side . bottom)
-         (slot . 3)
-         (window-height . 0.3))
+         ("\\*\\(Embark Collect\\|xref\\|grep\\|Occur\\)\\*"
+          (display-buffer-in-side-window)
+          (side . bottom)
+          (slot . 3)
+          (window-height . 0.3))
 
-        ("\\*compilation\\*"
-         (display-buffer-reuse-window display-buffer-at-bottom)
-         (window-height . 0.25))
-
-        ;; Magit 状态窗口：在当前选中窗口下方打开，不占用侧边区域
-        ((derived-mode . magit-status-mode)
-         (display-buffer-reuse-window display-buffer-below-selected)
-         (window-height . fit-window-to-buffer)
-         (inhibit-same-window . nil))   ; 允许在当前窗口重用，但优先在下侧打开
-        ))
+         ("\\*compilation\\*"
+          (display-buffer-reuse-window display-buffer-at-bottom)
+          (window-height . 0.25)))
+       display-buffer-alist))
 
 (defun my/tex-help-fixed-width ()
   (when-let ((help-win (get-buffer-window "*TeX Help*")))
@@ -1321,11 +1316,8 @@ Enables Emacs to remember the last location within a file upon reopening.
       ;; Suppress Dired buffer kill prompt for deleted dirs
       dired-clean-confirm-killing-deleted-buffers nil)
 
-;; This is a higher-level predicate that wraps `dired-directory-changed-p'
-;; with additional logic. This `dired-buffer-stale-p' predicate handles remote
-;; files, wdired, unreadable dirs, and delegates to dired-directory-changed-p
-;; for modification checks.
-(setq auto-revert-remote-files nil)
+;; `dired-buffer-stale-p' handles remote files, wdired, unreadable dirs, and
+;; delegates to `dired-directory-changed-p' for modification checks.
 (setq dired-auto-revert-buffer 'dired-buffer-stale-p)
 
 ;; dired-omit-mode
@@ -2185,9 +2177,7 @@ Corfu 继续负责正文中的 completion-at-point.
   (rime-posframe-properties
    '(:internal-border-width 1
      :internal-border-color "#e6e6e6"))
-  ;; (rime-show-candidate 'posframe) ;; 可选：'popup 'child-frame 'posframe 'minibuffer
   (rime-emacs-module-header-root "/Applications/Emacs.app/Contents/Resources/include")
-  ;; (rime-librime-root "~/.local/librime/dist/")
   (rime-librime-root "/opt/homebrew/opt/librime/")
   ;; Emacs 使用独立的雾凇运行目录，避免与鼠须管同时锁定
   ;; ~/Library/Rime/*.userdb 并再次损坏 LevelDB 词库。
@@ -2236,7 +2226,6 @@ Corfu 继续负责正文中的 completion-at-point.
 
   (setq rime-translate-keybindings '("<left>" "<right>" "<up>" "<down>"))
   (setq rime-inline-ascii-trigger 'shift-r)
-  ;; (setq rime-inline-ascii-holder ?x)
 
   (defvar my/default-cursor-color "#dfb350")
   (defvar my/input-method-cursor-color "#a0134f")
@@ -2261,10 +2250,6 @@ Corfu 继续负责正文中的 completion-at-point.
                      my/input-method-cursor-color
                    my/default-cursor-color)))
       (my/set-all-frames-cursor-color color)))
-
-  ;; 在输入法状态可能改变的时刻（如切换 buffer、切换窗口、执行命令后）更新
-  ;; (add-hook 'post-command-hook #'my/update-cursor-color-all-frames)
-  ;; (add-hook 'after-change-major-mode-hook #'my/update-cursor-color-all-frames)
 
   ;; 把 Rime 的 post-command-hook 改成更轻的刷新方式
   (defun my/rime-refresh-cursor-color (&rest _)
@@ -2696,6 +2681,10 @@ git push -u origin main
   :commands (magit-status magit-file-delete)
   :bind (("C-x g" . magit-status))
   :preface
+  (defun my/magit-fit-window (window)
+    "Fit WINDOW to its Magit contents."
+    (when (window-live-p window)
+      (fit-window-to-buffer window nil 5)))
   (defun my/magit-display-buffer-fit-window (buffer)
     "Display Magit BUFFER below the selected window and fit its height."
     (let ((window (display-buffer
@@ -2703,14 +2692,13 @@ git push -u origin main
                    '((display-buffer-reuse-window display-buffer-below-selected)
                      (inhibit-same-window . t)
                      (window-height . fit-window-to-buffer)))))
-      (when (window-live-p window)
-        (fit-window-to-buffer window nil 5))
+      (my/magit-fit-window window)
       window))
   (defun my/magit-fit-status-window ()
     "Fit the visible Magit status window after its contents refresh."
     (when (derived-mode-p 'magit-status-mode)
       (when-let ((window (get-buffer-window (current-buffer) t)))
-        (fit-window-to-buffer window nil 5))))
+        (my/magit-fit-window window))))
   (defun my/magit-refresh-vc-mode-lines ()
     "Refresh VC mode-line state for file buffers in the current Git repository."
     (when-let ((root (and (fboundp 'magit-toplevel)
