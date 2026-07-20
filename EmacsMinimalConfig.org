@@ -1085,6 +1085,14 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 (setq switch-to-buffer-obey-display-actions nil)
 
+(defun my/tex-font-help-buffer-p (buffer-name _action)
+  "Return non-nil when BUFFER-NAME is the AUCTeX font help buffer."
+  (when-let ((buffer (get-buffer buffer-name)))
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char (point-min))
+        (looking-at-p "Font list:")))))
+
 (setq display-buffer-alist
       (append
        '(("\\*TeX errors\\*"
@@ -1108,6 +1116,13 @@ Enables Emacs to remember the last location within a file upon reopening.
           (window-height . 0.25)
           (dedicated . t))
 
+         (my/tex-font-help-buffer-p
+          (display-buffer-in-side-window)
+          (side . bottom)
+          (slot . 3)
+          (window-height . fit-window-to-buffer)
+          (dedicated . t))
+
          ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
           (display-buffer-in-side-window)
           (side . right)
@@ -1118,7 +1133,7 @@ Enables Emacs to remember the last location within a file upon reopening.
          ("\\*\\(Embark Collect\\|xref\\|grep\\|Occur\\)\\*"
           (display-buffer-in-side-window)
           (side . bottom)
-          (slot . 3)
+          (slot . 4)
           (window-height . 0.3))
 
          ("\\*compilation\\*"
@@ -1474,11 +1489,13 @@ Corfu 继续负责正文中的 completion-at-point.
   ;; startup independent of whether another multiform mode loaded them first.
   (require 'vertico-grid)
   (require 'vertico-buffer)
+  (require 'vertico-indexed)
   (vertico-mode 1)
   (vertico-multiform-mode 1)
   :custom
   (vertico-cycle t)
   (vertico-count 9)
+  (vertico-indexed-start 1)
   (vertico-resize nil)
   ;; Inspect more candidates before deciding the grid width, and keep enough
   ;; horizontal room for long LaTeX command/environment names.
@@ -1505,44 +1522,20 @@ Corfu 继续负责正文中的 completion-at-point.
                   #'my/vertico-crm-indicator)))
 
   (setq vertico-multiform-commands
-        '((consult-line reverse)
-          (consult-outline buffer)
-          (consult-buffer (vertico-resize . t))
-          (describe-symbol
-           (vertico-sort-function . vertico-sort-alpha))
-          (helpful-symbol
-           (vertico-sort-function . vertico-sort-alpha))
-          (consult-xref grid)
-          (LaTeX-section flat)
-          (LaTeX-environment grid)
-          (execute-extended-command reverse)))
+        '((consult-outline buffer indexed)
+          (consult-buffer reverse indexed (vertico-resize . nil))
+          (consult-xref grid indexed)
+          (TeX-insert-macro grid indexed)
+          (LaTeX-environment grid indexed)
+          (LaTeX-section flat indexed)))
 
   (setq vertico-multiform-categories
-        '((tex-macro grid)
-          (symbol (vertico-sort-function . vertico-sort-alpha))
-          (file (vertico-sort-function . vertico-sort-directories-first)
-                (:keymap . vertico-directory-map)))))
-
-;; AUCTeX 14.1.2 does not attach a completion category to the dynamic
-;; completion table used by `TeX-insert-macro' (`C-c C-m').  Add a dedicated
-;; category so Vertico multiform can reliably select its grid layout.
-(with-eval-after-load 'tex
-  (defun my/tex-macro-completion-table
-      (table string predicate action)
-    "Run TABLE while exposing the `tex-macro' completion category."
-    (if (eq action 'metadata)
-        '(metadata (category . tex-macro))
-      (complete-with-action action table string predicate)))
-
-  (defun my/tex-add-macro-completion-category (table)
-    "Wrap AUCTeX completion TABLE with `tex-macro' metadata."
-    (apply-partially #'my/tex-macro-completion-table table))
-
-  (unless (advice-member-p #'my/tex-add-macro-completion-category
-                           #'TeX--symbol-completion-table)
-    (advice-add #'TeX--symbol-completion-table
-                :filter-return
-                #'my/tex-add-macro-completion-category)))
+        '((symbol reverse indexed
+                  (vertico-sort-function . vertico-sort-alpha))
+          (file reverse indexed
+                (vertico-sort-function . vertico-sort-directories-first)
+                (:keymap . vertico-directory-map))
+          (t reverse indexed))))
 #+end_src
 
 ** Corfu
@@ -3536,6 +3529,8 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
   :custom
   (which-key-idle-delay 1.5)
   (which-key-idle-secondary-delay 0.25)
+  (which-key-show-early-on-C-h t)
+  (which-key-side-window-location 'bottom)
   (which-key-add-column-padding 1)
   (which-key-max-description-length 40)
   :config
