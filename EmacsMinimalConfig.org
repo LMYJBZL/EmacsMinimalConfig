@@ -1526,6 +1526,7 @@ Corfu 继续负责正文中的 completion-at-point.
           (consult-buffer reverse indexed (vertico-resize . nil))
           (consult-xref grid indexed)
           (TeX-insert-macro grid indexed)
+          (my/TeX-font-completing-read grid indexed)
           (LaTeX-environment grid indexed)
           (LaTeX-section flat indexed)))
 
@@ -3220,12 +3221,26 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
       (delete-region (region-beginning) (region-end))
     (my/TeX--delete-pair)))
 
+(defun my/TeX-font-completing-read (replace)
+  "Select a TeX font command with minibuffer completion."
+  (interactive "*P")
+  (TeX-update-style)
+  (let* ((candidates
+          (mapcar (lambda (entry)
+                    (cons (string-trim (TeX-describe-font-entry entry))
+                          (car entry)))
+                  TeX-font-list))
+         (choice (completing-read "Font command: " candidates nil t)))
+    (TeX-font replace (cdr (assoc choice candidates)))))
+
 (defun my/latex-keymap-setup ()
   "Set local keys for the current LaTeX buffer."
   (local-set-key (kbd "<tab>") #'my/latex-tab)
   (local-set-key (kbd "TAB") #'my/latex-tab)
   (local-set-key (kbd "DEL") #'my/latex-delete-dwim)
   (local-set-key (kbd "<S-s-mouse-1>") #'TeX-view)
+  (local-set-key (kbd "C-c C-f") #'my/TeX-font-completing-read)
+  (local-set-key (kbd "C-c f") #'TeX-font)
 
   ;; Local Consult jump/search prefix.  Keep RefTeX toc/ref/cite on the
   ;; defaults: `C-c =', `C-c )' and `C-c ['.

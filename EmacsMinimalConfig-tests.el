@@ -85,6 +85,8 @@
     (should (bound-and-true-p visual-line-mode))
     (should (memq #'whitespace-cleanup before-save-hook))
     (should (eq (local-key-binding (kbd "TAB")) #'my/latex-tab))
+    (should (eq (local-key-binding (kbd "C-c C-f")) #'my/TeX-font-completing-read))
+    (should (eq (local-key-binding (kbd "C-c f")) #'TeX-font))
     (should (equal TeX-output-dir ".LaTeXOut/"))))
 
 (ert-deftest my/auctex-copy-pdf-same-path-is-safe ()
