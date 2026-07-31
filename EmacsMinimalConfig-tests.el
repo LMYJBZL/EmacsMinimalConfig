@@ -10,6 +10,10 @@
      (insert ,text)
      ,@body))
 
+(ert-deftest my/initial-scratch-buffer-is-empty ()
+  (should (eq initial-major-mode 'fundamental-mode))
+  (should (null initial-scratch-message)))
+
 (ert-deftest my/tex-delete-pair-at-buffer-start ()
   (my/test-with-text "\\left(   \\right)"
     (goto-char (+ (point-min) (length "\\left(")))
@@ -73,6 +77,10 @@
     (should (memq #'whitespace-cleanup before-save-hook))
     (should (local-variable-p 'before-save-hook))))
 
+(ert-deftest my/consult-buffer-has-preferred-bindings ()
+  (should (eq (key-binding (kbd "C-x b")) #'consult-buffer))
+  (should (eq (key-binding (kbd "C-c b")) #'consult-buffer)))
+
 (ert-deftest my/latex-mode-enables-core-features ()
   (with-temp-buffer
     (setq buffer-file-name "/tmp/emacs-minimal-config-test.tex")
@@ -85,50 +93,49 @@
     (should (bound-and-true-p visual-line-mode))
     (should (memq #'whitespace-cleanup before-save-hook))
     (should (eq (local-key-binding (kbd "TAB")) #'my/latex-tab))
+    (should (eq (local-key-binding (kbd "DEL")) #'my/latex-delete-dwim))
+    (should (fboundp 'my/TeX-font-completing-read))
     (should (eq (local-key-binding (kbd "C-c C-f")) #'my/TeX-font-completing-read))
     (should (eq (local-key-binding (kbd "C-c f")) #'TeX-font))
-    (should (equal TeX-output-dir ".LaTeXOut/"))))
+    (should (equal TeX-output-dir ".LaTeXOut/"))
+    (should (equal TeX-style-private (list my/tex-el-dir)))
+    (should (equal TeX-auto-private (list my/tex-el-dir)))
+    (should (equal TeX-command-extra-options "--shell-escape"))))
 
-(ert-deftest my/latex-vrb-source-candidates-find-output-dir-master ()
-  (let* ((dir (make-temp-file "latex-vrb-source-" t))
-         (output-dir (expand-file-name ".LaTeXOut" dir))
-         (tex-file (expand-file-name "slides.tex" dir))
-         (vrb-file (expand-file-name "slides.vrb" output-dir)))
-    (unwind-protect
-        (progn
-          (make-directory output-dir)
-          (with-temp-file tex-file (insert "\\begin{frame}\ntext\n\\end{frame}\n"))
-          (with-temp-file vrb-file (insert "text\n"))
-          (should (equal (my/latex-vrb-source-candidates vrb-file)
-                         (list tex-file))))
-      (delete-directory dir t))))
+(ert-deftest my/tex-font-entry-label-hides-key-hints ()
+  (let ((labels (delq nil
+                      (mapcar (lambda (entry)
+                                (my/TeX-font-entry-label entry nil))
+                              TeX-font-list))))
+    (should (member "delete font" labels))
+    (should-not (member "\\mathcal{ }" labels))
+    (should-not (cl-some
+                 (lambda (label)
+                   (string-match-p
+                    "\\`\\(?:C-[[:alnum:]]\\|M-[[:alnum:]]\\|TAB\\|RET\\|SPC\\)\\b"
+                    label))
+                 labels))))
 
-(ert-deftest my/latex-vrb-redirect-opens-tex-near-matching-line ()
-  (let* ((dir (make-temp-file "latex-vrb-redirect-" t))
-         (output-dir (expand-file-name ".LaTeXOut" dir))
-         (tex-file (expand-file-name "slides.tex" dir))
-         (vrb-file (expand-file-name "slides.vrb" output-dir)))
-    (unwind-protect
-        (progn
-          (make-directory output-dir)
-          (with-temp-file tex-file
-            (insert "\\begin{frame}\nplain text\n\\draw (0,0) -- (1,1);\n\\end{frame}\n"))
-          (with-temp-file vrb-file
-            (insert "plain text\n\\draw (0,0) -- (1,1);\n"))
-          (let ((vrb-buffer (find-file-noselect vrb-file)))
-            (unwind-protect
-                (with-current-buffer vrb-buffer
-                  (goto-char (point-min))
-                  (forward-line 1)
-                  (my/latex-redirect-vrb-source-buffer)
-                  (should (file-equal-p (buffer-file-name) tex-file))
-                  (should (looking-at-p "\\\\draw")))
-              (kill-buffer vrb-buffer))))
-      (dolist (buffer (buffer-list))
-        (when-let ((file (buffer-file-name buffer)))
-          (when (file-in-directory-p file dir)
-            (kill-buffer buffer))))
-      (delete-directory dir t))))
+(ert-deftest my/tex-font-entry-label-follows-math-context ()
+  (with-temp-buffer
+    (setq buffer-file-name "/tmp/emacs-minimal-config-font-test.tex")
+    (insert "\\documentclass{article}\n\\begin{document}\ntext $x$\n\\end{document}\n")
+    (LaTeX-mode)
+    (TeX-update-style)
+    (let ((bold-entry (assoc ?\C-b TeX-font-list))
+          (cal-entry (assoc ?\C-a TeX-font-list)))
+      (goto-char (point-min))
+      (search-forward "text")
+      (should-not (texmathp))
+      (should (equal (my/TeX-font-entry-label bold-entry (texmathp))
+                     "\\textbf{ }"))
+      (should-not (my/TeX-font-entry-label cal-entry (texmathp)))
+      (search-forward "x")
+      (should (texmathp))
+      (should (equal (my/TeX-font-entry-label bold-entry (texmathp))
+                     "\\mathbf{ }"))
+      (should (equal (my/TeX-font-entry-label cal-entry (texmathp))
+                     "\\mathcal{ }")))))
 
 (ert-deftest my/latex-load-provided-style-hooks-loads-private-style ()
   (let ((style-dir (make-temp-file "latex-style-hooks-" t)))
@@ -163,6 +170,73 @@
     (should (member "ctexbeamer" (my/latex-provided-style-hook-names)))
     (should (member "Theorems26" (my/latex-provided-style-hook-names)))
     (should (member "beamer" (my/latex-provided-style-hook-names)))))
+
+(ert-deftest my/latex-vrb-source-candidates-find-output-dir-master ()
+  (let* ((dir (make-temp-file "latex-vrb-source-" t))
+         (output-dir (expand-file-name ".LaTeXOut" dir))
+         (tex-file (expand-file-name "slides.tex" dir))
+         (vrb-file (expand-file-name "slides.vrb" output-dir)))
+    (unwind-protect
+        (progn
+          (make-directory output-dir)
+          (with-temp-file tex-file (insert "\\begin{frame}\ntext\n\\end{frame}\n"))
+          (with-temp-file vrb-file (insert "text\n"))
+          (should (equal (my/latex-vrb-source-candidates vrb-file)
+                         (list tex-file))))
+      (delete-directory dir t))))
+
+(ert-deftest my/consult-short-file-label-adds-parents-only-for-duplicates ()
+  (require 'consult)
+  (let* ((files '("/tmp/course-a/main.tex"
+                  "/tmp/course-b/main.tex"
+                  "/tmp/notes/unique.tex"))
+         (labels (mapcar (lambda (file)
+                           (my/consult-short-file-label file files))
+                         files)))
+    (should (equal labels
+                   '("course-a/main.tex"
+                     "course-b/main.tex"
+                     "unique.tex")))))
+
+(ert-deftest my/consult-recent-file-items-keep-real-paths ()
+  (require 'consult)
+  (require 'recentf)
+  (let ((recentf-list '("/tmp/course-a/main.tex"
+                        "/tmp/course-b/main.tex"
+                        "/tmp/notes/unique.tex")))
+    (cl-letf (((symbol-function #'consult--buffer-file-hash)
+               (lambda () (make-hash-table :test #'equal))))
+      (should (equal (my/consult-recent-file-items)
+                     '(("course-a/main.tex" . "/tmp/course-a/main.tex")
+                       ("course-b/main.tex" . "/tmp/course-b/main.tex")
+                       ("unique.tex" . "/tmp/notes/unique.tex")))))))
+
+(ert-deftest my/latex-vrb-redirect-opens-tex-near-matching-line ()
+  (let* ((dir (make-temp-file "latex-vrb-redirect-" t))
+         (output-dir (expand-file-name ".LaTeXOut" dir))
+         (tex-file (expand-file-name "slides.tex" dir))
+         (vrb-file (expand-file-name "slides.vrb" output-dir)))
+    (unwind-protect
+        (progn
+          (make-directory output-dir)
+          (with-temp-file tex-file
+            (insert "\\begin{frame}\nplain text\n\\draw (0,0) -- (1,1);\n\\end{frame}\n"))
+          (with-temp-file vrb-file
+            (insert "plain text\n\\draw (0,0) -- (1,1);\n"))
+          (let ((vrb-buffer (find-file-noselect vrb-file)))
+            (unwind-protect
+                (with-current-buffer vrb-buffer
+                  (goto-char (point-min))
+                  (forward-line 1)
+                  (my/latex-redirect-vrb-source-buffer)
+                  (should (file-equal-p (buffer-file-name) tex-file))
+                  (should (looking-at-p "\\\\draw")))
+              (kill-buffer vrb-buffer))))
+      (dolist (buffer (buffer-list))
+        (when-let ((file (buffer-file-name buffer)))
+          (when (file-in-directory-p file dir)
+            (kill-buffer buffer))))
+      (delete-directory dir t))))
 
 (ert-deftest my/auctex-copy-pdf-same-path-is-safe ()
   (let* ((dir (make-temp-file "auctex-copy-same-" t))

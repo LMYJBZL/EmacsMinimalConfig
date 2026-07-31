@@ -527,15 +527,9 @@ this stage of initialization."
 (setq user-full-name "Baojie Jiang"
       user-mail-address "jiangbaojie@gmail.com")
 
-;; The initial buffer is created during startup even in non-interactive
-;; sessions, and its major mode is fully initialized. Modes like `text-mode',
-;; `org-mode', or even the default `lisp-interaction-mode' load extra packages
-;; and run hooks, which can slow down startup.
-;;
-;; Using `fundamental-mode' for the initial buffer to avoid unnecessary
-;; startup overhead.
-(setq initial-major-mode 'fundamental-mode)
-(setq initial-scratch-message nil)
+;; Keep the initial scratch buffer empty and lightweight.
+(setq initial-major-mode 'fundamental-mode
+      initial-scratch-message nil)
 
 ;; Set-language-environment sets default-input-method, which is unwanted.
 (setq default-input-method nil)
@@ -995,6 +989,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 (use-package savehist
   :ensure nil
+  :if (not noninteractive)
   :init
   ;; 必须在 mode 启动前设置
   ;; (setq savehist-file
@@ -1026,6 +1021,7 @@ Enables Emacs to remember the last location within a file upon reopening.
                 (vertical-scroll-bars . nil)
                 (horizontal-scroll-bars . nil)
                 (left-fringe . 11)
+                (cursor-color . "#dfb350")
                 (right-fringe . 11)
                 (internal-border-width . 3)))
 
@@ -1085,14 +1081,6 @@ Enables Emacs to remember the last location within a file upon reopening.
 #+begin_src emacs-lisp
 (setq switch-to-buffer-obey-display-actions nil)
 
-(defun my/tex-font-help-buffer-p (buffer-name _action)
-  "Return non-nil when BUFFER-NAME is the AUCTeX font help buffer."
-  (when-let ((buffer (get-buffer buffer-name)))
-    (with-current-buffer buffer
-      (save-excursion
-        (goto-char (point-min))
-        (looking-at-p "Font list:")))))
-
 (setq display-buffer-alist
       (append
        '(("\\*TeX errors\\*"
@@ -1116,13 +1104,6 @@ Enables Emacs to remember the last location within a file upon reopening.
           (window-height . 0.25)
           (dedicated . t))
 
-         (my/tex-font-help-buffer-p
-          (display-buffer-in-side-window)
-          (side . bottom)
-          (slot . 3)
-          (window-height . fit-window-to-buffer)
-          (dedicated . t))
-
          ("\\*\\(Help\\|helpful\\|Apropos\\)\\*"
           (display-buffer-in-side-window)
           (side . right)
@@ -1140,16 +1121,6 @@ Enables Emacs to remember the last location within a file upon reopening.
           (display-buffer-reuse-window display-buffer-at-bottom)
           (window-height . 0.25)))
        display-buffer-alist))
-
-(defun my/tex-help-fixed-width ()
-  (when-let ((help-win (get-buffer-window "*TeX Help*")))
-    (let ((current (window-total-width help-win))
-          (target 76))
-      (when (> (abs (- current target)) 2)
-        (window-resize help-win (- target current) t)))))
-
-(add-hook 'window-configuration-change-hook
-          #'my/tex-help-fixed-width)
 
 ;; 3. Winner 模式：保存/撤销窗口布局，但忽略侧边窗口的 buffer
 (setq winner-boring-buffers
@@ -1919,6 +1890,12 @@ Corfu 继续负责正文中的 completion-at-point.
                    all-the-icons-mode-icon-alist)
         '(all-the-icons-octicon "comment-discussion"
           :v-adjust 0.0
+          :face all-the-icons-dsilver))
+
+  (setf (alist-get 'lisp-interaction-mode
+                   all-the-icons-mode-icon-alist)
+        '(all-the-icons-octicon "pencil"
+          :v-adjust 0.0
           :face all-the-icons-dsilver)))
 
 (use-package all-the-icons-dired
@@ -2162,8 +2139,7 @@ Corfu 继续负责正文中的 completion-at-point.
     (when (fboundp 'rime-force-enable)
       (rime-force-enable))
     (when (fboundp 'my/rime-refresh-cursor-color)
-      (my/rime-refresh-cursor-color))
-    (force-mode-line-update))
+      (my/rime-refresh-cursor-color)))
   :init
   (keymap-global-set "C-`" #'my/rime-force-enable-dwim)
   :custom
@@ -2181,17 +2157,6 @@ Corfu 继续负责正文中的 completion-at-point.
 
   ;; GUI 中让候选词靠近光标；终端中使用稳定的 minibuffer 显示。
   (setq rime-show-candidate (if (display-graphic-p) 'posframe 'minibuffer))
-
-  (defun my/enable-rime-in-writing-modes ()
-    "在日常写作模式中自动启用 Rime。"
-    (unless (or (equal current-input-method "rime")
-                (minibufferp)
-                (derived-mode-p 'special-mode 'help-mode 'messages-buffer-mode
-                                'log-edit-mode 'git-commit-mode))
-      (activate-input-method "rime")))
-
-  (dolist (hook '(text-mode-hook org-mode-hook LaTeX-mode-hook))
-    (add-hook hook #'my/enable-rime-in-writing-modes))
 
   (setq-default mode-line-mule-info
                 '(""
@@ -2214,7 +2179,9 @@ Corfu 继续负责正文中的 completion-at-point.
 
   (defun my/rime-lighter ()
     "Return CH/EN depending on Rime status."
-    (if (and (rime--should-enable-p) (not (rime--should-inline-ascii-p)) current-input-method)
+    (if (and (rime--should-enable-p)
+             (not (rime--should-inline-ascii-p))
+             current-input-method)
         (propertize "CH " 'face '(:foreground "#003366" :weight bold))
       (propertize "EN " 'face '(:foreground "#CC6600" :weight bold))))
 
@@ -2224,51 +2191,48 @@ Corfu 继续负责正文中的 completion-at-point.
   (defvar my/default-cursor-color "#dfb350")
   (defvar my/input-method-cursor-color "#a0134f")
 
-  ;; 在 default-frame-alist 中预设光标颜色，确保新 frame 不再出现蓝色
-  (add-to-list 'default-frame-alist
-               (cons 'cursor-color my/default-cursor-color))
-
   (defun my/set-all-frames-cursor-color (color)
-    "设置所有现存 frame 的光标颜色为 COLOR。"
+    "Set the cursor color of all existing frames to COLOR."
     (dolist (frame (frame-list))
-      ;; 自动中英文判断会在每条命令后运行；只有颜色实际变化时才写 frame。
       (unless (equal (frame-parameter frame 'my/rime-cursor-color) color)
         (set-frame-parameter frame 'cursor-color color)
         (set-frame-parameter frame 'my/rime-cursor-color color))))
 
-  (defun my/update-cursor-color-all-frames ()
-    "根据当前输入法状态，更新所有 frame 的光标颜色。"
-    (let ((color (if (and (bound-and-true-p rime-mode)
-                          (rime--should-enable-p)
-                          (not (rime--should-inline-ascii-p)))
-                     my/input-method-cursor-color
-                   my/default-cursor-color)))
-      (my/set-all-frames-cursor-color color)))
+  (defun my/rime-current-cursor-color ()
+    "Return the cursor color matching the current Rime state."
+    (if (and (bound-and-true-p rime-mode)
+             (rime--should-enable-p)
+             (not (rime--should-inline-ascii-p)))
+        my/input-method-cursor-color
+      my/default-cursor-color))
 
-  ;; 把 Rime 的 post-command-hook 改成更轻的刷新方式
   (defun my/rime-refresh-cursor-color (&rest _)
-    (my/update-cursor-color-all-frames))
+    "Refresh cursor color and mode line for the current Rime state."
+    (my/set-all-frames-cursor-color (my/rime-current-cursor-color))
+    (force-mode-line-update))
 
   (defun my/rime-enable-cursor-tracking ()
-    "在当前 Rime buffer 中跟踪上下文自动中英文状态。"
+    "Track Rime state in the current buffer while Rime is active."
     (add-hook 'post-command-hook #'my/rime-refresh-cursor-color nil t)
     (my/rime-refresh-cursor-color))
 
   (defun my/rime-disable-cursor-tracking ()
-    "停止在当前 buffer 中跟踪 Rime 状态并恢复默认光标颜色。"
+    "Stop tracking Rime state in the current buffer."
     (remove-hook 'post-command-hook #'my/rime-refresh-cursor-color t)
-    (my/set-all-frames-cursor-color my/default-cursor-color))
+    (my/set-all-frames-cursor-color my/default-cursor-color)
+    (force-mode-line-update))
 
   (add-hook 'input-method-activate-hook #'my/rime-enable-cursor-tracking)
   (add-hook 'input-method-deactivate-hook #'my/rime-disable-cursor-tracking)
   (add-hook 'window-selection-change-functions #'my/rime-refresh-cursor-color)
 
-  ;; 新 frame 创建时，强制应用当前正确的颜色（防止 default-frame-alist 被其他包覆盖）
   (defun my/init-new-frame-cursor-color (frame)
+    "Apply the current Rime cursor color to FRAME."
     (with-selected-frame frame
-      (my/update-cursor-color-all-frames)))
+      (my/set-all-frames-cursor-color (my/rime-current-cursor-color))))
 
   (add-hook 'after-make-frame-functions #'my/init-new-frame-cursor-color)
+  (my/set-all-frames-cursor-color my/default-cursor-color)
 
   (setq rime-cursor "˰")
 
@@ -2405,7 +2369,8 @@ Corfu 继续负责正文中的 completion-at-point.
          ("M-s c" . consult-locate)
          ("M-s g" . consult-grep)
          ("M-s l" . consult-line)
-         ("C-x b" . consult-buffer)
+        ("C-x b" . consult-buffer)
+        ("C-c b" . consult-buffer)
          ("M-g e" . consult-compile-error)
          ("M-g g" . consult-goto-line)
          ("M-g M-g" . consult-goto-line)
@@ -2426,121 +2391,72 @@ Corfu 继续负责正文中的 completion-at-point.
    :preview-key '(:debounce 0.4 any))
   (setq consult-narrow-key "<")
 
-  ;; (setq read-file-name-function #'consult-find-file-with-preview)
+  (defun my/consult-normalize-local-file (file)
+    "Return FILE as an absolute local path, or nil when FILE is unusable."
+    (when (and (stringp file) (not (string-empty-p file)))
+      (let ((file-name-handler-alist nil))
+        (expand-file-name file))))
 
-  ;; (defun consult-find-file-with-preview (prompt &optional dir default mustmatch initial pred)
-  ;;   (interactive)
-  ;;   (let ((default-directory (or dir default-directory))
-  ;;         (minibuffer-completing-file-name t))
-  ;;     (substitute-in-file-name
-  ;;      (consult--read #'read-file-name-internal
-  ;;                     :state (consult--file-preview)
-  ;;                     :prompt prompt
-  ;;                     :initial (abbreviate-file-name default-directory)
-  ;;                     :require-match mustmatch
-  ;;                     :predicate pred))))
+  (defun my/consult-file-suffix (file depth)
+    "Return FILE display suffix with DEPTH parent directories."
+    (let* ((abbr (abbreviate-file-name file))
+           (parts (split-string abbr "/" t))
+           (count (min (length parts) (1+ depth))))
+      (mapconcat #'identity (last parts count) "/")))
 
-  (defun my/recentf-normalize-path (file)
-    "将 recentf 中的 FILE 规范化为绝对路径字符串。"
-    (let ((file-path (if (stringp file) file (cdr file))))
-      (when (and (stringp file-path) (not (string-empty-p file-path)))
-        (expand-file-name file-path))))
-
-  (defun my/recentf-latex-generated-p (file-path)
-    "Return non-nil when FILE-PATH is a generated LaTeX cache/output file."
-    (string-match-p "/\\.LaTeX\\(?:Auto\\|Out\\)/" file-path))
-
-  (defun my/recentf-unique-directory-suffix (file-path files)
-    "为 FILE-PATH 生成相对 FILES 中同名文件的最短唯一路径后缀。"
-    (let* ((target-dir
-            (split-string
-             (directory-file-name
-              (file-name-directory (abbreviate-file-name file-path)))
-             "/" t))
-           (same-name-files
-            (seq-filter
+  (defun my/consult-short-file-label (file files)
+    "Return the shortest label that distinguishes FILE among FILES."
+    (let ((depth 0)
+          label)
+      (while
+          (progn
+            (setq label (my/consult-file-suffix file depth))
+            (cl-some
              (lambda (other)
-               (string= (file-name-nondirectory other)
-                        (file-name-nondirectory file-path)))
+               (and (not (string= file other))
+                    (string= label
+                             (my/consult-file-suffix other depth))))
              files))
-           (depth 1)
-           suffix)
-      (while (and (<= depth (length target-dir)) (not suffix))
-        (let ((candidate
-               (mapconcat #'identity
-                          (last target-dir depth)
-                          "/")))
-          (if (seq-every-p
-               (lambda (other)
-                 (or (string= other file-path)
-                     (not (string=
-                           candidate
-                           (mapconcat
-                            #'identity
-                            (last
-                             (split-string
-                              (directory-file-name
-                               (file-name-directory
-                                (abbreviate-file-name other)))
-                              "/" t)
-                             depth)
-                            "/")))))
-               same-name-files)
-              (setq suffix candidate)
-            (setq depth (1+ depth)))))
-      (or suffix
-          (directory-file-name
-           (file-name-directory (abbreviate-file-name file-path))))))
+        (setq depth (1+ depth)))
+      label))
 
-  ;; (defun my/recentf-display-name (file-path files duplicate-table)
-  ;;   "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
-  ;;   (let ((base-name (file-name-nondirectory file-path)))
-  ;;     (if (> (gethash base-name duplicate-table 0) 1)
-  ;;         (format "%s    <%s>"
-  ;;                 base-name
-  ;;                 (my/recentf-unique-directory-suffix file-path files))
-  ;;       base-name)))
+  (defun my/consult-short-file-candidates (files &optional predicate)
+    "Return display/path candidates for FILES using short unique labels.
+PREDICATE, when non-nil, is called with each normalized file path."
+    (let* ((normalized
+            (delete-dups
+             (delq nil
+                   (mapcar #'my/consult-normalize-local-file files))))
+           (filtered (if predicate
+                         (seq-filter predicate normalized)
+                       normalized)))
+      (mapcar
+       (lambda (file)
+         (cons (my/consult-short-file-label file filtered) file))
+       filtered)))
 
-  (defun my/recentf-display-name (file-path files duplicate-table)
-  "根据 FILES 和 DUPLICATE-TABLE 为 FILE-PATH 生成简洁且可区分的显示名。"
-  (let ((base-name (file-name-nondirectory file-path)))
-    (concat base-name "    <"
-            (my/recentf-unique-directory-suffix file-path files)
-            ">")))
+  (defun my/consult-recent-file-items ()
+    "Return recent files with short unique display labels."
+    (let ((ht (consult--buffer-file-hash)))
+      (my/consult-short-file-candidates
+       (bound-and-true-p recentf-list)
+       (lambda (file)
+         (not (gethash file ht))))))
 
-  (defun my-consult--source-recentf-items ()
-    "为 Consult 生成 recentf 项目。"
-    (let ((ht (consult--buffer-file-hash))
-          (duplicate-table (make-hash-table :test #'equal))
-          normalized-files
-          file-name-handler-alist
-          items)
-      (dolist (file recentf-list)
-        (let ((file-path (my/recentf-normalize-path file)))
-          (unless (or (null file-path)
-                      (my/recentf-latex-generated-p file-path)
-                      (gethash file-path ht))
-            (push file-path normalized-files)
-            (puthash (file-name-nondirectory file-path)
-                     (1+ (gethash (file-name-nondirectory file-path)
-                                  duplicate-table 0))
-                     duplicate-table))))
-      (dolist (file recentf-list)
-        ;; 修复：recentf-list 直接是文件路径字符串，不是 cons cell
-        (let ((file-path (my/recentf-normalize-path file)))
-          ;; 跳过已在缓冲区的文件
-          (unless (or (null file-path)
-                      (my/recentf-latex-generated-p file-path)
-                      (gethash file-path ht))
-            (push (cons (my/recentf-display-name
-                         file-path
-                         normalized-files
-                         duplicate-table)
-                        file-path)
-                  items))))
-      (nreverse items)))
+  (defun my/consult-project-recent-file-items ()
+    "Return project recent files with short unique display labels."
+    (when-let* ((root (consult--project-root)))
+      (let ((ht (consult--buffer-file-hash)))
+        (my/consult-short-file-candidates
+         (bound-and-true-p recentf-list)
+         (lambda (file)
+           (and (not (gethash file ht))
+                (string-prefix-p root file)))))))
 
-  (plist-put consult-source-recent-file :items #'my-consult--source-recentf-items))
+  (plist-put consult-source-recent-file
+             :items #'my/consult-recent-file-items)
+  (plist-put consult-source-project-recent-file
+             :items #'my/consult-project-recent-file-items))
 
 ;; (setq completion-in-region-function #'consult-completion-in-region)
 #+end_src
@@ -2673,41 +2589,7 @@ git push -u origin main
 (use-package magit
   :ensure t
   :commands (magit-status magit-file-delete)
-  :bind (("C-x g" . magit-status))
-  :preface
-  (defun my/magit-fit-window (window)
-    "Fit WINDOW to its Magit contents."
-    (when (window-live-p window)
-      (fit-window-to-buffer window nil 5)))
-  (defun my/magit-display-buffer-fit-window (buffer)
-    "Display Magit BUFFER below the selected window and fit its height."
-    (let ((window (display-buffer
-                   buffer
-                   '((display-buffer-reuse-window display-buffer-below-selected)
-                     (inhibit-same-window . t)
-                     (window-height . fit-window-to-buffer)))))
-      (my/magit-fit-window window)
-      window))
-  (defun my/magit-fit-status-window ()
-    "Fit the visible Magit status window after its contents refresh."
-    (when (derived-mode-p 'magit-status-mode)
-      (when-let ((window (get-buffer-window (current-buffer) t)))
-        (my/magit-fit-window window))))
-  (defun my/magit-refresh-vc-mode-lines ()
-    "Refresh VC mode-line state for file buffers in the current Git repository."
-    (when-let ((root (and (fboundp 'magit-toplevel)
-                          (magit-toplevel))))
-      (dolist (buffer (buffer-list))
-        (with-current-buffer buffer
-          (when (and buffer-file-name
-                     (file-in-directory-p buffer-file-name root)
-                     (bound-and-true-p vc-mode))
-            (vc-refresh-state)
-            (force-mode-line-update))))))
-  :hook ((magit-refresh-buffer . my/magit-fit-status-window)
-         (magit-post-refresh . my/magit-refresh-vc-mode-lines))
-  :custom
-  (magit-display-buffer-function #'my/magit-display-buffer-fit-window))
+  :bind (("C-x g" . magit-status)))
 #+end_src
 
 ** Treemacs
@@ -3018,35 +2900,24 @@ Stop when leaving the current math environment."
        (t nil)))))
 
 (defun my/latex-completion-dwim ()
-  "Complete at point in LaTeX buffers.
-Corfu handles the popup when `corfu-mode' is active; otherwise this falls back
-to the configured Emacs completion UI."
+  "Complete at point in LaTeX buffers."
   (when (or (thing-at-point 'symbol)
             (looking-back "\\\\[[:alpha:]@]*" (line-beginning-position)))
     (ignore-errors
       (completion-at-point))))
 
 (defun my/latex-tab ()
-  "Smart `TAB' for LaTeX.
-
-Priority:
-1. Indent current line.
-2. Expand a yasnippet or jump to its next field.
-3. In math, jump through `{...}' arguments and finally leave math.
-4. Complete at point with Corfu/completion-at-point."
+  "Indent, expand snippets, jump in math, or complete at point."
   (interactive)
   (unless (or (my/latex-indent-dwim)
               (my/latex-yas-dwim)
               (my/latex-math-jump)
               (my/latex-completion-dwim))
     (indent-for-tab-command)))
-#+end_src
 
-#+begin_src emacs-lisp
 (require 'cl-lib)
 (require 'subr-x)
 
-;;; ------------------------------
 (defconst latex-basic-braces
   '(("(" . ")")
     ("[" . "]")
@@ -3057,10 +2928,10 @@ Priority:
     ("\\lceil" . "\\rceil")
     ("\\langle" . "\\rangle")
     ("\\backslash" . "\\backslash"))
-  "基本 LaTeX 括号符号表")
+  "Basic LaTeX delimiter pairs.")
 
 (defun latex-generate-delim-pairs ()
-  "生成同层级的 LaTeX 括号配对。"
+  "Generate paired LaTeX delimiters with matching sizes."
   (let ((levels '(("" . "")
                   ("\\left" . "\\right")
                   ("\\bigl" . "\\bigr")
@@ -3073,36 +2944,30 @@ Priority:
         (push (cons (concat (car level) (car pair))
                     (concat (cdr level) (cdr pair)))
               result)))
-    ;; 添加非闭合情况
     (dolist (left latex-basic-braces)
       (push (cons (concat "\\left" (car left)) "\\right.") result)
       (push (cons "\\left." (concat "\\right" (cdr left))) result))
     (nreverse result)))
 
-;;; ------------------------------
 (defvar latex-brace-pairs
   (append
-   ;; 普通括号
    '(("\\(" . "\\)") ("\\[" . "\\]") ("\\{" . "\\}"))
-   ;; 自动生成的所有 left/big 系列
    (latex-generate-delim-pairs)))
 
-;; 预排序以提升性能（按左/右项长度降序）
 (defvar latex-brace-pairs-left-sorted
   (sort (copy-sequence latex-brace-pairs)
         (lambda (a b) (> (length (car a)) (length (car b))))))
+
 (defvar latex-brace-pairs-right-sorted
   (sort (copy-sequence latex-brace-pairs)
         (lambda (a b) (> (length (cdr a)) (length (cdr b))))))
 
-;;; ------------------------------
 (defun my/TeX--blank-between (start end)
-  "检查 START 与 END 之间是否只有空白字符。"
+  "Return non-nil when START and END contain only whitespace."
   (string-blank-p (buffer-substring-no-properties start end)))
 
 (defun my/TeX--find-matching-right (pos left-symbol)
-  "Return the adjacent blank-separated right match for LEFT-SYMBOL at POS.
-The result is (RIGHT-POS RIGHT-LEN), where RIGHT-POS is the match end."
+  "Return the adjacent blank-separated right match for LEFT-SYMBOL at POS."
   (let* ((rights (mapcar #'cdr
                          (cl-remove-if-not
                           (lambda (p) (string= (car p) left-symbol))
@@ -3120,8 +2985,7 @@ The result is (RIGHT-POS RIGHT-LEN), where RIGHT-POS is the match end."
       nil)))
 
 (defun my/TeX--find-matching-left (pos right-symbol)
-  "Return the adjacent blank-separated left match for RIGHT-SYMBOL at POS.
-The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
+  "Return the adjacent blank-separated left match for RIGHT-SYMBOL at POS."
   (let* ((lefts (mapcar #'car
                         (cl-remove-if-not
                          (lambda (p) (string= (cdr p) right-symbol))
@@ -3140,75 +3004,56 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
               (throw 'found (list start (length left)))))))
       nil)))
 
-;;; ------------------------------
 (defun my/TeX--delete-left-match (pos)
-  "如果光标在某个左符号之后，尝试删除该左符号与其右配对（若中间为空白则删除整对），否则只删除左符号。
-返回 t 表示已做删除，nil 表示未处理。"
+  "Delete a LaTeX left delimiter at POS, with a blank adjacent right match."
   (catch 'done
     (dolist (pair latex-brace-pairs-left-sorted)
       (let* ((left (car pair))
              (llen (length left)))
         (when (and (>= (- pos llen) (point-min))
-                   (string= (buffer-substring-no-properties (- pos llen) pos) left))
-          ;; 找到左符号匹配
+                   (string= (buffer-substring-no-properties (- pos llen) pos)
+                            left))
           (let ((match (my/TeX--find-matching-right pos left)))
             (if match
                 (let* ((rpos (nth 0 match))
                        (rlen (nth 1 match))
                        (content-start pos)
                        (content-end (- rpos rlen)))
-                  (if (<= content-start content-end)
-                      (if (my/TeX--blank-between content-start content-end)
-                          (progn
-                            (delete-region (- pos llen) rpos)
-                            (throw 'done t))
-                        ;; 中间非空白，只删除左符号
-                        (delete-region (- pos llen) pos)
-                        (throw 'done t))
-                    ;; 如果 content-start > content-end（不应发生），退回删除左符号
-                    (delete-region (- pos llen) pos)
-                    (throw 'done t)))
-              ;; 没有找到右匹配，仅删除左符号
+                  (if (and (<= content-start content-end)
+                           (my/TeX--blank-between content-start content-end))
+                      (delete-region (- pos llen) rpos)
+                    (delete-region (- pos llen) pos))
+                  (throw 'done t))
               (delete-region (- pos llen) pos)
               (throw 'done t))))))
     nil))
 
 (defun my/TeX--delete-right-match (pos)
-  "如果光标在某个右符号之后，尝试删除该右符号与其左配对（若中间为空白则删除整对），否则只删除右符号。
-返回 t 表示已做删除，nil 表示未处理。"
+  "Delete a LaTeX right delimiter at POS, with a blank adjacent left match."
   (catch 'done
     (dolist (pair latex-brace-pairs-right-sorted)
       (let* ((right (cdr pair))
              (rlen (length right)))
         (when (and (>= (- pos rlen) (point-min))
-                   (string= (buffer-substring-no-properties (- pos rlen) pos) right))
-          ;; 找到右符号匹配
+                   (string= (buffer-substring-no-properties (- pos rlen) pos)
+                            right))
           (let ((match (my/TeX--find-matching-left pos right)))
             (if match
                 (let* ((lpos (nth 0 match))
                        (llen (nth 1 match))
                        (content-start (+ lpos llen))
                        (content-end (- pos rlen)))
-                  (if (<= content-start content-end)
-                      (if (my/TeX--blank-between content-start content-end)
-                          (progn
-                            (delete-region lpos pos)
-                            (throw 'done t))
-                        ;; 中间非空白，只删除右符号
-                        (delete-region (- pos rlen) pos)
-                        (throw 'done t))
-                    ;; content-start > content-end 的回退行为
-                    (delete-region (- pos rlen) pos)
-                    (throw 'done t)))
-              ;; 没有找到左匹配，仅删除右符号
+                  (if (and (<= content-start content-end)
+                           (my/TeX--blank-between content-start content-end))
+                      (delete-region lpos pos)
+                    (delete-region (- pos rlen) pos))
+                  (throw 'done t))
               (delete-region (- pos rlen) pos)
               (throw 'done t))))))
     nil))
 
-;;; ------------------------------
 (defun my/TeX--delete-pair ()
-  "智能删除 LaTeX 成对符号或单个符号。优先尝试以成对删除（当中间仅空白时），否则删除单个符号。
-回退：若无匹配，行为与 `backward-delete-char-untabify` 相同。"
+  "Delete paired or single LaTeX delimiters, falling back to Backspace."
   (interactive)
   (unless (or (my/TeX--delete-left-match (point))
               (my/TeX--delete-right-match (point)))
@@ -3220,18 +3065,6 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
   (if (use-region-p)
       (delete-region (region-beginning) (region-end))
     (my/TeX--delete-pair)))
-
-(defun my/TeX-font-completing-read (replace)
-  "Select a TeX font command with minibuffer completion."
-  (interactive "*P")
-  (TeX-update-style)
-  (let* ((candidates
-          (mapcar (lambda (entry)
-                    (cons (string-trim (TeX-describe-font-entry entry))
-                          (car entry)))
-                  TeX-font-list))
-         (choice (completing-read "Font command: " candidates nil t)))
-    (TeX-font replace (cdr (assoc choice candidates)))))
 
 (defun my/latex-vrb-source-candidates (vrb-file)
   "Return existing .tex files that may be the source for VRB-FILE."
@@ -3297,6 +3130,37 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
                (file-name-nondirectory source-file)))))
 
 (add-hook 'server-visit-hook #'my/latex-redirect-vrb-source-buffer)
+
+(defun my/TeX-font-completing-read (replace)
+  "Select a TeX font command with minibuffer completion."
+  (interactive "*P")
+  (TeX-update-style)
+  (let* ((in-math (texmathp))
+         (candidates
+          (delq nil
+                (mapcar (lambda (entry)
+                          (when-let ((label
+                                      (my/TeX-font-entry-label entry in-math)))
+                            (cons label (car entry))))
+                        TeX-font-list)))
+         (choice (completing-read "Font command: " candidates nil t)))
+    (TeX-font replace (cdr (assoc choice candidates)))))
+
+(defun my/TeX-font-entry-affixes (entry in-math)
+  "Return the actual font affixes for ENTRY in the current IN-MATH context."
+  (if (and in-math (stringp (nth 3 entry)))
+      (list (nth 3 entry) (nth 4 entry))
+    (list (nth 1 entry) (nth 2 entry))))
+
+(defun my/TeX-font-entry-label (entry &optional in-math)
+  "Return the context-aware `TeX-font-list' ENTRY label without its key hint."
+  (if (or (eq t (nth 3 entry)) (eq t (nth 5 entry)))
+      "delete font"
+    (pcase-let ((`(,before ,after)
+                 (my/TeX-font-entry-affixes entry in-math)))
+      (unless (and (string-empty-p before)
+                   (string-empty-p after))
+        (format "%s %s" before after)))))
 
 (defun my/latex-provided-style-hook-names ()
   "Return AUCTeX style hooks recorded for the current LaTeX buffer."
@@ -3448,14 +3312,14 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
   ;; /并不是必须的但是在my-auctex-after-compilation-copy-pdf函数中要".LaTeXAuto/"这个值
   (setq TeX-auto-local ".LaTeXAuto/")
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
-  (setq TeX-style-private my/tex-el-dir
-        TeX-auto-private my/tex-el-dir)
+  (setq TeX-style-private (list my/tex-el-dir)
+        TeX-auto-private (list my/tex-el-dir))
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
 
   :config
+  (setq-default TeX-command-extra-options "--shell-escape")
   (setq TeX-parse-self t
         TeX-auto-save t
-        TeX-command-extra-options "--shell-escape"
         TeX-file-line-error t
         TeX-error-overview-open-after-TeX-run t
         TeX-source-correlate-mode t
@@ -3507,6 +3371,8 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
     "Custom setup for LaTeX mode."
     (interactive)
     ;; (my/auctex-auto-engine)                  ; 新版引擎检测
+    (setq-local TeX-command-extra-options
+                (default-value 'TeX-command-extra-options))
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
     (my/latex-keymap-setup)
     (my/latex-load-provided-style-hooks)
