@@ -89,6 +89,81 @@
     (should (eq (local-key-binding (kbd "C-c f")) #'TeX-font))
     (should (equal TeX-output-dir ".LaTeXOut/"))))
 
+(ert-deftest my/latex-vrb-source-candidates-find-output-dir-master ()
+  (let* ((dir (make-temp-file "latex-vrb-source-" t))
+         (output-dir (expand-file-name ".LaTeXOut" dir))
+         (tex-file (expand-file-name "slides.tex" dir))
+         (vrb-file (expand-file-name "slides.vrb" output-dir)))
+    (unwind-protect
+        (progn
+          (make-directory output-dir)
+          (with-temp-file tex-file (insert "\\begin{frame}\ntext\n\\end{frame}\n"))
+          (with-temp-file vrb-file (insert "text\n"))
+          (should (equal (my/latex-vrb-source-candidates vrb-file)
+                         (list tex-file))))
+      (delete-directory dir t))))
+
+(ert-deftest my/latex-vrb-redirect-opens-tex-near-matching-line ()
+  (let* ((dir (make-temp-file "latex-vrb-redirect-" t))
+         (output-dir (expand-file-name ".LaTeXOut" dir))
+         (tex-file (expand-file-name "slides.tex" dir))
+         (vrb-file (expand-file-name "slides.vrb" output-dir)))
+    (unwind-protect
+        (progn
+          (make-directory output-dir)
+          (with-temp-file tex-file
+            (insert "\\begin{frame}\nplain text\n\\draw (0,0) -- (1,1);\n\\end{frame}\n"))
+          (with-temp-file vrb-file
+            (insert "plain text\n\\draw (0,0) -- (1,1);\n"))
+          (let ((vrb-buffer (find-file-noselect vrb-file)))
+            (unwind-protect
+                (with-current-buffer vrb-buffer
+                  (goto-char (point-min))
+                  (forward-line 1)
+                  (my/latex-redirect-vrb-source-buffer)
+                  (should (file-equal-p (buffer-file-name) tex-file))
+                  (should (looking-at-p "\\\\draw")))
+              (kill-buffer vrb-buffer))))
+      (dolist (buffer (buffer-list))
+        (when-let ((file (buffer-file-name buffer)))
+          (when (file-in-directory-p file dir)
+            (kill-buffer buffer))))
+      (delete-directory dir t))))
+
+(ert-deftest my/latex-load-provided-style-hooks-loads-private-style ()
+  (let ((style-dir (make-temp-file "latex-style-hooks-" t)))
+    (unwind-protect
+        (let ((style-file (expand-file-name "mytestpkg.el" style-dir)))
+          (with-temp-file style-file
+            (insert ";; -*- lexical-binding: t; -*-\n"
+                    "(TeX-add-style-hook\n"
+                    " \"mytestpkg\"\n"
+                    " (lambda ()\n"
+                    "   (LaTeX-add-environments '(\"mytestenv\" LaTeX-env-args [\"argument\"] 0)))\n"
+                    " :latex)\n"))
+          (with-temp-buffer
+            (LaTeX-mode)
+            (let ((TeX-style-path (cons style-dir TeX-style-path))
+                  (LaTeX-provided-package-options '(("mytestpkg" "")))
+                  (LaTeX-provided-class-options nil))
+              (my/latex-load-provided-style-hooks t)
+              (should
+               (member "mytestenv"
+                       (cl-loop for group in LaTeX-environment-list
+                                append (mapcar (lambda (entry)
+                                                 (if (consp entry)
+                                                     (car entry)
+                                                   entry))
+                                               group)))))))
+      (delete-directory style-dir t))))
+
+(ert-deftest my/latex-provided-style-hook-names-adds-beamer-for-ctexbeamer ()
+  (let ((LaTeX-provided-class-options '(("ctexbeamer" "t")))
+        (LaTeX-provided-package-options '(("Theorems26" "language=zh"))))
+    (should (member "ctexbeamer" (my/latex-provided-style-hook-names)))
+    (should (member "Theorems26" (my/latex-provided-style-hook-names)))
+    (should (member "beamer" (my/latex-provided-style-hook-names)))))
+
 (ert-deftest my/auctex-copy-pdf-same-path-is-safe ()
   (let* ((dir (make-temp-file "auctex-copy-same-" t))
          (default-directory dir)

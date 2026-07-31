@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-07-17 10:35:28 baojie>
+#+DATE: Time-stamp: <2026-07-20 16:03:35 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no
@@ -1501,11 +1501,11 @@ Corfu 继续负责正文中的 completion-at-point.
   ;; horizontal room for long LaTeX command/environment names.
   ;; (vertico-grid-lookahead 200)
   ;; (vertico-grid-max-columns 3)
-  (vertico-buffer-display-action
-   '((display-buffer-in-side-window)
-     (side . right)
-     (slot . 10)
-     (window-width . 0.33)))
+  ;; (vertico-buffer-display-action
+  ;;  '((display-buffer-in-side-window)
+  ;;    (side . right)
+  ;;    (slot . 10)
+  ;;    (window-width . 0.33)))
   :config
   (defun my/vertico-crm-indicator (args)
     "Prefix the prompt in `completing-read-multiple' with its separator."
@@ -3233,6 +3233,93 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
          (choice (completing-read "Font command: " candidates nil t)))
     (TeX-font replace (cdr (assoc choice candidates)))))
 
+(defun my/latex-vrb-source-candidates (vrb-file)
+  "Return existing .tex files that may be the source for VRB-FILE."
+  (let* ((file (expand-file-name vrb-file))
+         (dir (file-name-directory file))
+         (stem (file-name-sans-extension (file-name-nondirectory file)))
+         (same-dir-source (expand-file-name (concat stem ".tex") dir))
+         (dir-name (file-name-nondirectory (directory-file-name dir)))
+         (parent-dir (file-name-directory (directory-file-name dir)))
+         (output-dir-name
+          (file-name-nondirectory
+           (directory-file-name
+            (if (and (boundp 'TeX-output-dir) (stringp TeX-output-dir))
+                TeX-output-dir
+              ".LaTeXOut/"))))
+         (output-dir-source
+          (when (and parent-dir (string= dir-name output-dir-name))
+            (expand-file-name (concat stem ".tex") parent-dir))))
+    (cl-remove-duplicates
+     (cl-remove-if-not #'file-exists-p
+                       (delq nil (list same-dir-source output-dir-source)))
+     :test #'file-equal-p)))
+
+(defun my/latex-vrb-nearby-source-line ()
+  "Return a nonblank line near point for locating the original .tex source."
+  (save-excursion
+    (catch 'line
+      (dolist (offset '(0 -1 1 -2 2 -3 3 -4 4 -5 5))
+        (goto-char (point-at-bol))
+        (when (zerop (forward-line offset))
+          (let ((line (string-trim
+                       (buffer-substring-no-properties
+                        (line-beginning-position)
+                        (line-end-position)))))
+            (when (and (> (length line) 2)
+                       (not (string-prefix-p "%" line)))
+              (throw 'line line)))))
+      nil)))
+
+(defun my/latex-open-source-for-vrb (source-file vrb-line source-line)
+  "Open SOURCE-FILE for a .vrb reverse search and place point near SOURCE-LINE."
+  (find-file source-file)
+  (goto-char (point-min))
+  (cond
+   ((and source-line
+         (re-search-forward (regexp-quote source-line) nil t))
+    (beginning-of-line))
+   ((numberp vrb-line)
+    (forward-line (max 0 (1- vrb-line))))))
+
+(defun my/latex-redirect-vrb-source-buffer ()
+  "Redirect SyncTeX inverse searches from Beamer .vrb files back to .tex."
+  (when-let* ((vrb-file (buffer-file-name))
+              ((string= (downcase (or (file-name-extension vrb-file) ""))
+                        "vrb"))
+              (source-file (car (my/latex-vrb-source-candidates vrb-file))))
+    (let ((vrb-buffer (current-buffer))
+          (vrb-line (line-number-at-pos))
+          (source-line (my/latex-vrb-nearby-source-line)))
+      (my/latex-open-source-for-vrb source-file vrb-line source-line)
+      (bury-buffer vrb-buffer)
+      (message "Redirected SyncTeX .vrb source to %s"
+               (file-name-nondirectory source-file)))))
+
+(add-hook 'server-visit-hook #'my/latex-redirect-vrb-source-buffer)
+
+(defun my/latex-provided-style-hook-names ()
+  "Return AUCTeX style hooks recorded for the current LaTeX buffer."
+  (let ((names (append (mapcar #'car LaTeX-provided-class-options)
+                       (mapcar #'car LaTeX-provided-package-options))))
+    ;; AUCTeX's `ctexbeamer' style hook does not pull in every Beamer
+    ;; environment template, but the document class does provide them.
+    (when (member "ctexbeamer" names)
+      (push "beamer" names))
+    (delete-dups (delq nil names))))
+
+(defun my/latex-load-provided-style-hooks (&optional skip-update)
+  "Load AUCTeX class/package style hooks for the current LaTeX buffer.
+When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
+  (when (derived-mode-p 'latex-mode 'LaTeX-mode)
+    (unless skip-update
+      (TeX-update-style))
+    (dolist (style (my/latex-provided-style-hook-names))
+      (when (and (stringp style)
+                 (not (member style TeX-active-styles)))
+        (ignore-errors
+          (TeX-run-style-hooks style))))))
+
 (defun my/latex-keymap-setup ()
   "Set local keys for the current LaTeX buffer."
   (local-set-key (kbd "<tab>") #'my/latex-tab)
@@ -3422,6 +3509,7 @@ The result is (LEFT-POS LEFT-LEN), where LEFT-POS is the match start."
     ;; (my/auctex-auto-engine)                  ; 新版引擎检测
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
     (my/latex-keymap-setup)
+    (my/latex-load-provided-style-hooks)
 
     ;; (my/translate-fullwidth-to-halfwidth)
 
