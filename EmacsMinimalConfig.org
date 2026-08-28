@@ -17,7 +17,7 @@
 
 ;; Author: James Cherti <https://www.jamescherti.com/contact/>
 ;; URL: https://github.com/jamescherti/minimal-emacs.d
-;; Package-Requires: ((emacs "29.1"))
+;; Package-Requires: ((emacs "31.1"))
 ;; Keywords: maint
 ;; Version: 1.4.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -75,41 +75,6 @@ Ignored if `minimal-emacs-optimize-startup-gc' is nil.")
 When non-nil, this variable activates optimizations to reduce file name handler
 lookups during Emacs startup.")
 
-(defvar minimal-emacs-disable-mode-line-during-startup t
-  "Disable the mode line during startup.
-This reduces visual clutter and slightly enhances startup performance. The
-tradeoff is that the mode line is hidden during the startup phase.")
-
-(defvar minimal-emacs-package-initialize-and-refresh t
-  "Whether to automatically initialize and refresh packages.
-When set to non-nil, Emacs will automatically call `package-initialize' and
-`package-refresh-contents' to set up and update the package system.")
-
-(defvar minimal-emacs-inhibit-redisplay-during-startup nil
-  "Suppress redisplay during startup to improve performance.
-This prevents visual updates while Emacs initializes. The tradeoff is that you
-won't see the progress or activities during the startup process.")
-
-(defvar minimal-emacs-inhibit-message-during-startup nil
-  "Suppress startup messages for a cleaner experience.
-This slightly enhances performance. The tradeoff is that you won't be informed
-of the progress or any relevant activities during startup.")
-
-(defvar minimal-emacs-user-directory user-emacs-directory
-  "Directory beneath minimal-emacs.d files are placed.
-Note that this should end with a directory separator.")
-
-(defvar minimal-emacs-load-pre-early-init t
-  "If non-nil, attempt to load `pre-early-init.el`.")
-
-(defvar minimal-emacs-load-post-early-init t
-  "If non-nil, attempt to load `post-early-init.el`.")
-
-(defvar minimal-emacs-load-pre-init t
-  "If non-nil, attempt to load `pre-init.el`.")
-
-(defvar minimal-emacs-load-post-init t
-  "If non-nil, attempt to load `post-init.el`.")
 #+end_src
 
 ** Directory
@@ -137,30 +102,6 @@ Note that this should end with a directory separator.")
 
 (setq load-prefer-newer t)
 
-;;; ============================================================================
-;;; 用户自定义路径常量
-;;; ============================================================================
-
-(defun minimal-emacs--remove-el-file-suffix (filename)
-  "Remove the Elisp file suffix from FILENAME and return it (.el, .el.gz...)."
-  (let ((suffixes (mapcar (lambda (ext) (concat ".el" ext))
-                          load-file-rep-suffixes)))
-    (catch 'done
-      (dolist (suffix suffixes filename)
-        (when (string-suffix-p suffix filename)
-          (setq filename (substring filename 0 (- (length suffix))))
-          (throw 'done t))))
-    filename))
-
-(defun minimal-emacs-load-user-init (filename)
-  "加载用户初始化文件，自动选择 .el 或 .elc"
-  (let ((init-file (expand-file-name filename minimal-emacs-user-directory)))
-    ;; 移除 .el/.elc 后缀，让 load 自动选择最新的版本
-    (setq init-file (minimal-emacs--remove-el-file-suffix init-file))
-    (load init-file :no-error (not minimal-emacs-debug))))
-
-;; (when minimal-emacs-load-pre-early-init
-;;   (minimal-emacs-load-user-init "pre-early-init.el"))
 #+end_src
 
 ** Garbage Collection
@@ -219,12 +160,9 @@ Note that this should end with a directory separator.")
 ;; Increase how much is read from processes in a single chunk
 (setq read-process-output-max (* 2 1024 1024))  ; 2MB
 
-(setq process-adaptive-read-buffering nil)
-
 ;; Don't ping things that look like domain names.
 (setq ffap-machine-p-known 'reject)
 
-(setq warning-minimum-level (if minimal-emacs-debug :warning :error))
 (setq warning-suppress-types '((lexical-binding)))
 
 (when minimal-emacs-debug
@@ -335,90 +273,10 @@ this stage of initialization."
             101))
 #+end_src
 
-*** Inhibit Redisplay
-
-#+begin_src emacs-lisp
-(defun minimal-emacs--reset-inhibit-redisplay ()
-  "Reset inhibit redisplay."
-  (setq-default inhibit-redisplay nil)
-  (remove-hook 'post-command-hook #'minimal-emacs--reset-inhibit-redisplay))
-
-(when (and minimal-emacs-inhibit-redisplay-during-startup
-           (not noninteractive)
-           (not minimal-emacs-debug))
-  ;; Suppress redisplay and redraw during startup to avoid delays and
-  ;; prevent flashing an unstyled Emacs frame.
-  (setq-default inhibit-redisplay t)
-  (add-hook 'post-command-hook #'minimal-emacs--reset-inhibit-redisplay -100))
-#+end_src
-
-*** Inhibit Message
-
-#+begin_src emacs-lisp
-(defun minimal-emacs--reset-inhibit-message ()
-  "Reset inhibit message."
-  (setq-default inhibit-message nil)
-  (remove-hook 'post-command-hook #'minimal-emacs--reset-inhibit-message))
-
-(when (and minimal-emacs-inhibit-message-during-startup
-           (not noninteractive)
-           (not minimal-emacs-debug))
-  (setq-default inhibit-message t)
-  (add-hook 'post-command-hook #'minimal-emacs--reset-inhibit-message -100))
-#+end_src
-
-*** Disable Mode-line During Startup
-
-#+begin_src emacs-lisp
-(defvar-local minimal-emacs--hidden-mode-line nil
-  "Store the buffer-local value of `mode-line-format' during startup.")
-
-(when (and minimal-emacs-disable-mode-line-during-startup
-           (not noninteractive)
-           (not minimal-emacs-debug))
-  (put 'mode-line-format
-       'initial-value (default-toplevel-value 'mode-line-format))
-  (setq-default mode-line-format nil)
-  (dolist (buf (buffer-list))
-    (with-current-buffer buf
-      (when (local-variable-p 'mode-line-format)
-        (setq minimal-emacs--hidden-mode-line mode-line-format)
-        (setq mode-line-format nil)))))
-#+end_src
-
-** Restore Values
-
-#+begin_src emacs-lisp
-(defun minimal-emacs--startup-load-user-init-file (fn &rest args)
-  "Advice to reset `mode-line-format'. FN and ARGS are the function and args."
-  (unwind-protect
-      ;; Start up as normal
-      (apply fn args)
-    ;; If we don't undo inhibit-{message, redisplay} and there's an error, we'll
-    ;; see nothing but a blank Emacs frame.
-    (when minimal-emacs-inhibit-message-during-startup
-      (setq-default inhibit-message nil))
-    (when minimal-emacs-inhibit-redisplay-during-startup
-      (setq-default inhibit-redisplay nil))
-    ;; Restore the mode-line
-    (when minimal-emacs-disable-mode-line-during-startup
-      (unless (default-toplevel-value 'mode-line-format)
-        (setq-default mode-line-format (get 'mode-line-format
-                                            'initial-value)))
-      (dolist (buf (buffer-list))
-        (with-current-buffer buf
-          (when (local-variable-p 'minimal-emacs--hidden-mode-line)
-            (setq mode-line-format minimal-emacs--hidden-mode-line)
-            (kill-local-variable 'minimal-emacs--hidden-mode-line)))))))
-
-(advice-add 'startup--load-user-init-file :around
-            #'minimal-emacs--startup-load-user-init-file)
-#+end_src
-
 ** Security
 
 #+begin_src emacs-lisp
-(setq package-check-signature nil)
+(setq package-check-signature 'allow-unsigned)
 
 (setq gnutls-verify-error t)  ; Prompts user if there are certificate issues
 (setq tls-checktrust t)  ; Ensure SSL/TLS connections undergo trust verification
@@ -434,16 +292,12 @@ this stage of initialization."
 
 ;; package.el
 (setq package-enable-at-startup nil)  ; Let the init.el file handle this
-(setq package-quickstart-file
-      (expand-file-name "package-quickstart.el" user-emacs-directory))
-(setq package-archives '(("melpa"        . "https://melpa.org/packages/")
-                         ("gnu"          . "https://elpa.gnu.org/packages/")
-                         ("nongnu"       . "https://elpa.nongnu.org/nongnu/")
-                         ("melpa-stable" . "https://stable.melpa.org/packages/")))
+(setq package-archives '(("melpa"  . "https://melpa.org/packages/")
+                         ("gnu"    . "https://elpa.gnu.org/packages/")
+                         ("nongnu" . "https://elpa.nongnu.org/nongnu/")))
 (setq package-archive-priorities '(("gnu"    . 99)
                                    ("nongnu" . 80)
-                                   ("melpa"  . 70)
-                                   ("melpa-stable" . 50)))
+                                   ("melpa"  . 70)))
 
 (setq package-user-dir (expand-file-name "elpa" user-emacs-directory))
 #+end_src
@@ -469,7 +323,7 @@ this stage of initialization."
 
 ;; Author: James Cherti <https://www.jamescherti.com/contact/>
 ;; URL: https://github.com/jamescherti/minimal-emacs.d
-;; Package-Requires: ((emacs "29.1"))
+;; Package-Requires: ((emacs "31.1"))
 ;; Keywords: maint
 ;; Version: 1.4.1
 ;; SPDX-License-Identifier: GPL-3.0-or-later
@@ -540,75 +394,19 @@ this stage of initialization."
 
 ;; Allow for shorter responses: "y" for yes and "n" for no.
 (setq read-answer-short t)
-(if (boundp 'use-short-answers)
-    (setq use-short-answers t)
-  (fset 'yes-or-no-p 'y-or-n-p))
+(setq use-short-answers t)
 #+end_src
 
 ** Package.el
 
 #+begin_src emacs-lisp
-(defvar my/package-refresh-on-missing-use-package nil
-  "Non-nil means refresh package archives at startup if `use-package' is missing.")
-
-(when (and (bound-and-true-p minimal-emacs-package-initialize-and-refresh)
-           (not (bound-and-true-p byte-compile-current-file))
-           (not (or (fboundp 'straight-use-package)
-                    (fboundp 'elpaca))))
+(unless (or (fboundp 'straight-use-package)
+            (fboundp 'elpaca))
   (require 'package)
-  (package-initialize)
-  (unless (package-installed-p 'use-package)
-    (when (and my/package-refresh-on-missing-use-package
-               (not package-archive-contents))
-      (package-refresh-contents))
-    (if package-archive-contents
-        (package-install 'use-package)
-      (user-error
-       "use-package is missing; run M-x package-refresh-contents, then restart Emacs")))
-  (require 'use-package))
-#+end_src
+  (package-initialize))
 
-** Compile-angel
-
-#+begin_src emacs-lisp :tangle no
-;; Native compilation enhances Emacs performance by converting Elisp code into
-;; native machine code, resulting in faster execution and improved
-;; responsiveness.
-;;
-;; Ensure adding the following compile-angel code at the very beginning
-;; of your `~/.emacs.d/post-init.el` file, before all other packages.
-(use-package compile-angel
-  :demand t
-  :config
-  ;; The following disables compilation of packages during installation;
-  ;; compile-angel will handle it.
-  (setq package-native-compile nil)
-
-  ;; Set `compile-angel-verbose' to nil to disable compile-angel messages.
-  ;; (When set to nil, compile-angel won't show which file is being compiled.)
-  (setq compile-angel-verbose t)
-
-  ;; The following directive prevents compile-angel from compiling your init
-  ;; files. If you choose to remove this push to `compile-angel-excluded-files'
-  ;; and compile your pre/post-init files, ensure you understand the
-  ;; implications and thoroughly test your code. For example, if you're using
-  ;; the `use-package' macro, you'll need to explicitly add:
-  ;; (eval-when-compile (require 'use-package))
-  ;; at the top of your init file.
-  (setq compile-angel-excluded-files
-        (append compile-angel-excluded-files
-                '("/init\\.el"
-                  "/post-init\\.el"
-                  "/pre-early-init\\.el"
-                  "/post-early-init\\.el")))
-
-  ;; A local mode that compiles .el files whenever the user saves them.
-  ;; (add-hook 'emacs-lisp-mode-hook #'compile-angel-on-save-local-mode)
-
-  ;; A global mode that compiles .el files prior to loading them via `load' or
-  ;; `require'. Additionally, it compiles all packages that were loaded before
-  ;; the mode `compile-angel-on-load-mode' was activated.
-  (compile-angel-on-load-mode 1))
+;; `use-package' is bundled with Emacs 31.
+(require 'use-package)
 #+end_src
 
 ** Undo/Redo
@@ -1286,7 +1084,7 @@ Enables Emacs to remember the last location within a file upon reopening.
 ** Dired
 
 #+begin_src emacs-lisp
-(when-let ((gls (executable-find "gls")))
+(when-let* ((gls (executable-find "gls")))
   (setq dired-use-ls-dired t
         insert-directory-program gls
         dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first"))
@@ -1329,8 +1127,7 @@ Diredfl Extra font lock rules for a more colourful dired
 
 #+begin_src emacs-lisp
 (use-package diredfl
-  :config
-  (diredfl-global-mode t))
+  :hook (dired-mode . diredfl-mode))
 #+end_src
 
 ** Wdired
@@ -1478,20 +1275,6 @@ Corfu 继续负责正文中的 completion-at-point.
   ;;    (slot . 10)
   ;;    (window-width . 0.33)))
   :config
-  (defun my/vertico-crm-indicator (args)
-    "Prefix the prompt in `completing-read-multiple' with its separator."
-    (cons (format "[CRM%s] %s"
-                  (string-replace "[ \t]*" "" crm-separator)
-                  (car args))
-          (cdr args)))
-
-  (when (< emacs-major-version 31)
-    (unless (advice-member-p #'my/vertico-crm-indicator
-                             #'completing-read-multiple)
-      (advice-add #'completing-read-multiple
-                  :filter-args
-                  #'my/vertico-crm-indicator)))
-
   (setq vertico-multiform-commands
         '((consult-outline buffer indexed)
           (consult-buffer reverse indexed (vertico-resize . nil))
@@ -1612,7 +1395,7 @@ Corfu 继续负责正文中的 completion-at-point.
 
   (defun my/flyspell-mode-if-available ()
     "Enable `flyspell-mode' only when a spell checker is available."
-    (when-let ((program (my/flyspell-available-program)))
+    (when-let* ((program (my/flyspell-available-program)))
       (setq-local ispell-program-name program)
       (when (string= program "aspell")
         (setq-local ispell-extra-args '("--sug-mode=ultra" "--lang=en_US")))
@@ -1731,16 +1514,6 @@ Corfu 继续负责正文中的 completion-at-point.
 (keymap-global-set "C-x C-b" #'ibuffer)
 #+end_src
 
-** Xref
-
-清理重复的 xref 配置，只保留 Consult 版本
-
-#+begin_src emacs-lisp :tangle no
-;; Enable completion in the minibuffer instead of the definitions buffer
-(setq xref-show-definitions-function 'xref-show-definitions-completing-read
-      xref-show-xrefs-function 'xref-show-definitions-completing-read)
-#+end_src
-
 ** Abbrev
 
 #+begin_src emacs-lisp
@@ -1841,18 +1614,18 @@ Corfu 继续负责正文中的 completion-at-point.
 ** Theme
 
 #+begin_src emacs-lisp
-(use-package modus-themes
-  :ensure t
-  :init
+(let ((custom-theme-load-path '(t))
+      (inhibit-redisplay t))
+  ;; Load the Modus library and theme bundled with Emacs 31, even when an
+  ;; older ELPA installation is still present on `custom-theme-load-path'.
+  (require-theme 'modus-themes)
   (setq modus-themes-italic-constructs t
-        modus-themes-bold-constructs t)
-  (setq modus-themes-common-palette-overrides
-      '((bg-paren-match unspecified)
-        (fg-paren-match red-intense)))
-  :config
-  (let ((inhibit-redisplay t))
-    (mapc #'disable-theme custom-enabled-themes)
-    (load-theme 'modus-operandi-deuteranopia t)))
+        modus-themes-bold-constructs t
+        modus-themes-common-palette-overrides
+        '((bg-paren-match unspecified)
+          (fg-paren-match red-intense)))
+  (mapc #'disable-theme custom-enabled-themes)
+  (load-theme 'modus-operandi-deuteranopia t))
 #+end_src
 
 ** Icon
@@ -1960,19 +1733,16 @@ Corfu 继续负责正文中的 completion-at-point.
 ** Mode Line
 
 #+begin_src emacs-lisp
-(defun my/setup-mode-line-after-startup ()
-  "设置 mode-line 参数"
-  (setq-default mode-line-percent-position nil
-                mode-line-compact t)
-  ;; 安全地移除某个元素而不破坏原始列表
-  (when (memq 'mode-line-buffer-identification mode-line-format)
-    (setq-default mode-line-format
-                  (delete 'mode-line-buffer-identification
-                          (copy-sequence mode-line-format)))))
+(setopt mode-line-percent-position nil
+        mode-line-compact t
+        ;; Keep Flymake visible and collapse other minor-mode lighters into
+        ;; the built-in clickable menu introduced in Emacs 31.
+        mode-line-collapse-minor-modes '(not flymake-mode)
+        mode-line-modes-delimiters nil)
 
-(add-hook 'emacs-startup-hook #'my/setup-mode-line-after-startup 'append)
-
-;; (setq mode-line-collapse-minor-modes '(not))
+(setq-default mode-line-format
+              (delq 'mode-line-buffer-identification
+                    (copy-sequence (default-value 'mode-line-format))))
 #+end_src
 
 ** Diff-mode
@@ -2044,8 +1814,7 @@ Corfu 继续负责正文中的 completion-at-point.
 ** Restart
 
 #+begin_src emacs-lisp
-(use-package restart-emacs
-  :bind ("s-r" . restart-emacs))
+(keymap-global-set "s-r" #'restart-emacs)
 #+end_src
 
 ** Delsel
@@ -2130,6 +1899,7 @@ Corfu 继续负责正文中的 completion-at-point.
 #+begin_src emacs-lisp
 (use-package rime
   :ensure t
+  :defer t
   :preface
   (defun my/rime-force-enable-dwim ()
     "Ensure Rime is active and force the next input to Chinese."
@@ -2511,19 +2281,6 @@ Embark integrates with Consult and Vertico to provide context-sensitive actions 
   (yas-reload-all))
 #+end_src
 
-** Server
-
-#+begin_src emacs-lisp :tangle no
-;; Configure the built-in Emacs server to start after initialization,
-;; allowing the use of the emacsclient command to open files in the
-;; current session.
-(use-package server
-  :ensure nil
-  :commands server-start
-  :hook
-  (after-init . server-start))
-#+end_src
-
 ** Magit
 
 magit是Emacs的一个强大的git前端.
@@ -2590,111 +2347,6 @@ git push -u origin main
   :ensure t
   :commands (magit-status magit-file-delete)
   :bind (("C-x g" . magit-status)))
-#+end_src
-
-** Treemacs
-
-#+begin_src emacs-lisp :tangle no
-;; A file and project explorer for Emacs that displays a structured tree
-;; layout, similar to file browsers in modern IDEs. It functions as a sidebar
-;; in the left window, providing a persistent view of files, projects, and
-;; other elements.
-(use-package treemacs
-  :commands (treemacs
-             treemacs-select-window
-             treemacs-delete-other-windows
-             treemacs-select-directory
-             treemacs-bookmark
-             treemacs-find-file
-             treemacs-find-tag)
-  :bind
-  (:map global-map
-        ("M-0"       . treemacs-select-window)
-        ("C-x t 1"   . treemacs-delete-other-windows)
-        ("C-x t t"   . treemacs)
-        ("C-x t d"   . treemacs-select-directory)
-        ("C-x t B"   . treemacs-bookmark)
-        ("C-x t C-t" . treemacs-find-file)
-        ("C-x t M-t" . treemacs-find-tag))
-  :init
-  (with-eval-after-load 'winum
-    (define-key winum-keymap (kbd "M-0") #'treemacs-select-window))
-  :config
-  (setq treemacs-collapse-dirs                   (if treemacs-python-executable 3 0)
-        treemacs-deferred-git-apply-delay        0.5
-        treemacs-directory-name-transformer      #'identity
-        treemacs-display-in-side-window          t
-        treemacs-eldoc-display                   'simple
-        treemacs-file-event-delay                2000
-        treemacs-file-extension-regex            treemacs-last-period-regex-value
-        treemacs-file-follow-delay               0.2
-        treemacs-file-name-transformer           #'identity
-        treemacs-follow-after-init               t
-        treemacs-expand-after-init               t
-        treemacs-find-workspace-method           'find-for-file-or-pick-first
-        treemacs-git-command-pipe                ""
-        treemacs-goto-tag-strategy               'refetch-index
-        treemacs-header-scroll-indicators        '(nil . "^^^^^^")
-        treemacs-hide-dot-git-directory          t
-        treemacs-indentation                     2
-        treemacs-indentation-string              " "
-        treemacs-is-never-other-window           nil
-        treemacs-max-git-entries                 5000
-        treemacs-missing-project-action          'ask
-        treemacs-move-files-by-mouse-dragging    t
-        treemacs-move-forward-on-expand          nil
-        treemacs-no-png-images                   nil
-        treemacs-no-delete-other-windows         t
-        treemacs-project-follow-cleanup          nil
-        treemacs-persist-file                    (expand-file-name ".cache/treemacs-persist" user-emacs-directory)
-        treemacs-position                        'left
-        treemacs-read-string-input               (if (display-graphic-p)
-                                                     'from-child-frame
-                                                   'from-minibuffer)
-        treemacs-recenter-distance               0.1
-        treemacs-recenter-after-file-follow      nil
-        treemacs-recenter-after-tag-follow       nil
-        treemacs-recenter-after-project-jump     'always
-        treemacs-recenter-after-project-expand   'on-distance
-        treemacs-litter-directories              '("/node_modules" "/.venv" "/.cask")
-        treemacs-project-follow-into-home        nil
-        treemacs-show-cursor                     nil
-        treemacs-show-hidden-files               t
-        treemacs-silent-filewatch                nil
-        treemacs-silent-refresh                  nil
-        treemacs-sorting                         'alphabetic-asc
-        treemacs-select-when-already-in-treemacs 'move-back
-        treemacs-space-between-root-nodes        t
-        treemacs-tag-follow-cleanup              t
-        treemacs-tag-follow-delay                1.5
-        treemacs-text-scale                      nil
-        treemacs-user-mode-line-format           nil
-        treemacs-user-header-line-format         nil
-        treemacs-wide-toggle-width               70
-        treemacs-width                           35
-        treemacs-width-increment                 1
-        treemacs-width-is-initially-locked       t
-        treemacs-workspace-switch-cleanup        nil)
-
-  ;; The default width and height of the icons is 22 pixels. If you are
-  ;; using a Hi-DPI display, uncomment this to double the icon size.
-  ;; (treemacs-resize-icons 44)
-
-  (treemacs-follow-mode t)
-  (treemacs-filewatch-mode t)
-  (treemacs-fringe-indicator-mode 'always)
-
-  ;;(when treemacs-python-executable
-  ;;  (treemacs-git-commit-diff-mode t))
-
-  (pcase (cons (not (null (executable-find "git")))
-               (not (null treemacs-python-executable)))
-    (`(t . t)
-     (treemacs-git-mode 'deferred))
-    (`(t . _)
-     (treemacs-git-mode 'simple)))
-
-  (treemacs-hide-gitignored-files-mode nil))
 #+end_src
 
 ** Languages
@@ -2798,7 +2450,8 @@ Org files elsewhere always require confirmation."
 
 #+begin_src emacs-lisp
 (use-package yaml-mode
-  :ensure t)
+  :ensure t
+  :mode "\\.ya?ml\\'")
 #+end_src
 
 *** TeX
@@ -2809,7 +2462,7 @@ Org files elsewhere always require confirmation."
 ;;
 ;; Author:
 ;; URL:
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 ;; Keywords:
 
 ;;; Commentary:
@@ -2827,16 +2480,6 @@ Org files elsewhere always require confirmation."
 (setenv "BIBINPUTS"
         (concat my/tex-bib-dir "//:"
                 (or (getenv "BIBINPUTS") "")))
-#+end_src
-
-#+begin_src emacs-lisp :tangle no
-(use-package smartparens
-  :hook (prog-mode text-mode markdown-mode LaTeX-mode) ;; add `smartparens-mode` to these hooks
-  :config
-  ;; load default config
-  (require 'smartparens-config)
-  (sp-local-pair 'LaTeX-mode "$" nil :actions :rem)
-  (sp-local-pair 'LaTeX-mode "`" nil :actions :rem))
 #+end_src
 
 #+begin_src emacs-lisp
@@ -3139,8 +2782,8 @@ Stop when leaving the current math environment."
          (candidates
           (delq nil
                 (mapcar (lambda (entry)
-                          (when-let ((label
-                                      (my/TeX-font-entry-label entry in-math)))
+                          (when-let* ((label
+                                       (my/TeX-font-entry-label entry in-math)))
                             (cons label (car entry))))
                         TeX-font-list)))
          (choice (completing-read "Font command: " candidates nil t)))
@@ -3162,27 +2805,9 @@ Stop when leaving the current math environment."
                    (string-empty-p after))
         (format "%s %s" before after)))))
 
-(defun my/latex-provided-style-hook-names ()
-  "Return AUCTeX style hooks recorded for the current LaTeX buffer."
-  (let ((names (append (mapcar #'car LaTeX-provided-class-options)
-                       (mapcar #'car LaTeX-provided-package-options))))
-    ;; AUCTeX's `ctexbeamer' style hook does not pull in every Beamer
-    ;; environment template, but the document class does provide them.
-    (when (member "ctexbeamer" names)
-      (push "beamer" names))
-    (delete-dups (delq nil names))))
-
-(defun my/latex-load-provided-style-hooks (&optional skip-update)
-  "Load AUCTeX class/package style hooks for the current LaTeX buffer.
-When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
-  (when (derived-mode-p 'latex-mode 'LaTeX-mode)
-    (unless skip-update
-      (TeX-update-style))
-    (dolist (style (my/latex-provided-style-hook-names))
-      (when (and (stringp style)
-                 (not (member style TeX-active-styles)))
-        (ignore-errors
-          (TeX-run-style-hooks style))))))
+;; AUCTeX style data should come from the normal master-file workflow:
+;; open the real master file and run `C-c C-n' there so AUCTeX generates and
+;; loads `.LaTeXAuto/<master>.el'.  Avoid local fallback hooks here.
 
 (defun my/latex-keymap-setup ()
   "Set local keys for the current LaTeX buffer."
@@ -3201,96 +2826,6 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
   (local-set-key (kbd "C-c j e") #'consult-flymake))
 #+end_src
 
-#+begin_src emacs-lisp :tangle no
-;; 旧版自动引擎实现曾在这里手写解析/重写 Local Variables 块。
-;; 下面的 `my/auctex-auto-engine' 也保留为候选实现，当前没有 tangle，
-;; 也没有挂到 LaTeX mode 或编译命令上。
-#+end_src
-
-#+begin_src emacs-lisp :tangle no
-  (defconst my/auctex-chinese-source-regexp
-    (concat
-     "^[[:space:]]*\\\\documentclass"
-     "\\(?:\\[[^]]*\\]\\)?"
-     "{\\(ctexart\\|ctexrep\\|ctexbook\\|ctexbeamer\\)}"
-     "\\|^[[:space:]]*\\\\usepackage"
-     "\\(?:\\[[^]]*\\]\\)?"
-     "{\\([^}]*,\\)?ctex\\(,[^}]*\\)?}")
-    "Regexp used to detect Chinese TeX support from LaTeX source.")
-
-  (defun my/auctex-buffer-contains-regexp-p (regexp)
-    "Return non-nil when current buffer contains REGEXP."
-    (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (point-min))
-        (re-search-forward regexp nil t))))
-
-  (defun my/auctex-file-contains-regexp-p (file regexp)
-    "Return non-nil when FILE contains REGEXP."
-    (when (and file (file-readable-p file))
-      (with-temp-buffer
-        (insert-file-contents file)
-        (goto-char (point-min))
-        (re-search-forward regexp nil t))))
-
-  (defun my/auctex-buffer-uses-chinese-source-p ()
-    "检查当前 buffer 源码中是否直接使用中文 LaTeX 支持。"
-    (my/auctex-buffer-contains-regexp-p my/auctex-chinese-source-regexp))
-
-  (defun my/auctex-master-file-path ()
-    "返回当前 LaTeX 缓冲区对应 master 文件的绝对路径。"
-    (when-let ((buffer-file (buffer-file-name))
-               (buffer-dir (file-name-directory buffer-file)))
-      (cond
-       ((and (boundp 'TeX-master)
-             (stringp TeX-master))
-        (expand-file-name TeX-master buffer-dir))
-       ((fboundp 'TeX-master-file)
-        (when-let ((master (ignore-errors (TeX-master-file t))))
-          (when (stringp master)
-            (expand-file-name master buffer-dir)))))))
-
-  (defun my/auctex-master-uses-chinese-source-p ()
-    "检查 master 文件源码中是否使用中文 LaTeX 支持。"
-    (let ((master-file (my/auctex-master-file-path))
-          (buffer-file (buffer-file-name)))
-      (and master-file
-           (not (and buffer-file
-                     (ignore-errors (file-equal-p master-file buffer-file))))
-           (my/auctex-file-contains-regexp-p
-            master-file
-            my/auctex-chinese-source-regexp))))
-
-  (defun my/auctex-uses-chinese-p ()
-    "通过当前 buffer 和 master 源码判断是否需要中文 TeX 引擎。"
-    (or (my/auctex-buffer-uses-chinese-source-p)
-        (my/auctex-master-uses-chinese-source-p)))
-
-  (defun my/auctex-current-file-local-engine ()
-    "返回当前文件中声明的 `TeX-engine'，未声明时返回 nil。"
-    (cdr (assq 'TeX-engine file-local-variables-alist)))
-
-  (defun my/auctex-write-engine-to-file (engine)
-    "使用 Emacs 内置接口把 ENGINE 写入文件局部变量。"
-    (when (buffer-file-name)
-      (let ((current (my/auctex-current-file-local-engine)))
-        (unless (eq current engine)
-          (add-file-local-variable 'TeX-engine engine)
-          (setf (alist-get 'TeX-engine file-local-variables-alist) engine)))))
-
-  (defun my/auctex-auto-engine (&optional write-file-local)
-    "根据文档内容自动设置 `TeX-engine'。
-若 WRITE-FILE-LOCAL 非 nil，则同步到文件局部变量。"
-    (when (derived-mode-p 'latex-mode 'LaTeX-mode)
-      (let ((engine (if (my/auctex-uses-chinese-p) 'xetex 'luatex)))
-        (unless (and (boundp 'TeX-engine)
-                     (eq TeX-engine engine))
-          (setq-local TeX-engine engine))
-        (when write-file-local
-          (my/auctex-write-engine-to-file engine)))))
-#+end_src
-
 **** AUCTeX
 
 #+begin_src emacs-lisp
@@ -3305,10 +2840,10 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
   ;;                "/Users/baojie/.emacs.d/elpa/auctex-14.1.2/doc"))
   ;; 动态获取 auctex 的安装目录
   (with-eval-after-load 'info
-    (when-let ((auctex-dir (file-name-directory (locate-library "auctex.el")))
-               (doc-dir (expand-file-name "doc" auctex-dir)))
+    (when-let* ((auctex-dir (file-name-directory (locate-library "auctex.el")))
+                (doc-dir (expand-file-name "doc" auctex-dir)))
       (add-to-list 'Info-additional-directory-list doc-dir)))
-  (setq TeX-output-dir ".LaTeXOut/")
+  (setq-default TeX-output-dir ".LaTeXOut/")
   ;; /并不是必须的但是在my-auctex-after-compilation-copy-pdf函数中要".LaTeXAuto/"这个值
   (setq TeX-auto-local ".LaTeXAuto/")
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/el")
@@ -3317,9 +2852,10 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
   ;; (setq TeX-style-private "~/Documents/Notes/TeX/cls/Style")
 
   :config
-  (setq-default TeX-command-extra-options "--shell-escape")
   (setq TeX-parse-self t
         TeX-auto-save t
+        TeX-auto-save-aggregate nil
+        TeX-auto-untabify t
         TeX-file-line-error t
         TeX-error-overview-open-after-TeX-run t
         TeX-source-correlate-mode t
@@ -3348,43 +2884,23 @@ When SKIP-UPDATE is nil, refresh AUCTeX's parsed style data first."
   (setq LaTeX-item-indent 2)
   ;; (setq TeX-ispell-extend-skip-list t)
 
-  ;; (add-hook 'find-file-hook
-  ;;           (lambda ()
-  ;;             (when (eq major-mode 'latex-mode)
-  ;;               (when (or (not (file-exists-p (buffer-file-name)))
-  ;;                         (eq TeX-master 'shared))
-  ;;                 (add-file-local-variable
-  ;;                  'TeX-engine
-  ;;                  (intern (completing-read "Add TeX-engine with value: "
-  ;;                                           (mapcar 'car (TeX-engine-alist))
-  ;;                                           nil nil nil nil "default"))))
-  ;;               (TeX-update-style t))))
-
   ;; 关闭 AUCTeX 自己的 electric-indent，避免冲突
   ;; (add-hook 'LaTeX-mode-hook (lambda () (electric-indent-local-mode 1)))
-
-  ;; 在编译命令前自动触发
-  ;; (advice-add 'TeX-command-master :before (lambda (&rest _) (my/auctex-auto-engine t)))
-  ;; (advice-add 'TeX-command-run-all :before (lambda (&rest _) (my/auctex-auto-engine t)))
 
   (defun my/latex-mode-setup ()
     "Custom setup for LaTeX mode."
     (interactive)
-    ;; (my/auctex-auto-engine)                  ; 新版引擎检测
-    (setq-local TeX-command-extra-options
-                (default-value 'TeX-command-extra-options))
     (setq-local TeX-electric-math (cons "\\("  "\\)"))
     (my/latex-keymap-setup)
-    (my/latex-load-provided-style-hooks)
 
     ;; (my/translate-fullwidth-to-halfwidth)
 
-    (LaTeX-math-mode)
+    (LaTeX-math-mode 1)
     ;; (highlight-indent-guides-mode)
-    (visual-line-mode)
+    (visual-line-mode 1)
+    (turn-on-auto-fill)
     ;; (electric-pair-mode)
     ;; (electric-indent-local-mode)
-    ;; (turn-on-auto-fill)
     ;; (turn-on-reftex)
     ;; (predictive-mode)
     ;; (eglot-ensure)
