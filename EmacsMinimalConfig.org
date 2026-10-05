@@ -23,6 +23,8 @@
 若要删除整个 =~/.emacs.d/=，先退出 Emacs，再按 [[file:README.org::*完整重建][完整重建说明]]
 使用不加载个人配置的独立进程 tangle；目标目录不存在时会自动创建。
 Snippets 的源文件也保存在本 Org 中，导出到 =~/.emacs.d/etc/snippets/=，与配置一起管理版本。
+本仓库只跟踪 =EmacsMinimalConfig.org=；说明、测试及其他本地文件通过
+=.git/info/exclude= 忽略。该忽略规则保存在当前仓库，换电脑重新克隆时需重新设置。
 所需扩展包由配置安装，首次安装需要网络。MacTeX、Skim、字体和 Notes 资源
 属于独立资源；删除 =~/.emacs.d/= 前仍应保存个人缩写、
 =etc/custom.el=、=etc/abbrev_defs= 和需要保留的 =var/= 历史数据及恢复文件。
@@ -204,7 +206,6 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
     (horizontal-scroll-bars . nil)
     (left-fringe . 11)
     (right-fringe . 11)
-    (cursor-color . "#dfb350")
     (internal-border-width . 3))
   "Shared defaults for the initial frame and later frames.")
 
@@ -1097,8 +1098,10 @@ are defining or executing a macro."
 
 *** Vertico
 
-Vertico 显示迷你缓冲区候选；LaTeX 使用 AUCTeX 原生的宏与环境插入命令。
-网格最多三列，窄窗口可退为单列；编号与候选文字使用相同字号。
+使用 Vertico 原生的单列候选布局，最多显示四行，frame 宽度保持不变。
+LaTeX 宏与环境通过 AUCTeX 原生提示选择，后续文件及参数提示也使用相同补全界面。
+=Tab= 填入选中项，=RET= 确认，=C-j= 提交自己输入的内容。
+文件选择中 =RET= 进入选中的目录，=M-DEL= 删除一层路径。
 
 #+begin_src emacs-lisp
 (use-package vertico
@@ -1115,41 +1118,22 @@ Vertico 显示迷你缓冲区候选；LaTeX 使用 AUCTeX 原生的宏与环境�
   ((rfn-eshadow-update-overlay . vertico-directory-tidy)
    (minibuffer-setup . vertico-repeat-save))
   :init
-  ;; Load extensions whose customization variables are set below.  This keeps
-  ;; startup independent of whether another multiform mode loaded them first.
-  (require 'vertico-grid)
-  (require 'vertico-buffer)
-  (require 'vertico-indexed)
+  ;; Keep Vertico's native layout instead of overriding its display methods.
+  (when (bound-and-true-p vertico-multiform-mode)
+    (vertico-multiform-mode -1))
   (vertico-mode 1)
-  (vertico-multiform-mode 1)
   :custom
   (vertico-cycle t)
-  (vertico-count 9)
-  (vertico-indexed-start 1)
-  (vertico-resize nil)
-  (vertico-grid-min-columns 1)
-  (vertico-grid-max-columns 3)
-  (vertico-grid-lookahead 200)
-  :custom-face
-  ;; Grid columns use character widths, so keep indices at the text size.
-  (vertico-indexed ((t (:inherit font-lock-comment-face :height 1.0
-                                :weight normal :slant normal))))
-  :config
-  (setq vertico-multiform-commands
-        '((consult-outline buffer indexed)
-          (consult-buffer reverse indexed (vertico-resize . nil))
-          (consult-xref grid indexed)
-          (TeX-insert-macro grid indexed)
-          (LaTeX-environment grid indexed)
-          (LaTeX-section flat indexed)))
+  (vertico-count 4)
+  (vertico-resize nil))
 
-  (setq vertico-multiform-categories
-        '((symbol reverse indexed
-                  (vertico-sort-function . vertico-sort-alpha))
-          (file reverse indexed
-                (vertico-sort-function . vertico-sort-directories-first)
-                (:keymap . vertico-directory-map))
-          (t reverse indexed))))
+(use-package vertico-directory
+  :ensure nil
+  :after vertico
+  :bind (:map vertico-map
+              ("RET" . vertico-directory-enter)
+              ("DEL" . vertico-directory-delete-char)
+              ("M-DEL" . vertico-directory-delete-word)))
 #+end_src
 
 *** Marginalia
@@ -1162,7 +1146,34 @@ Vertico 显示迷你缓冲区候选；LaTeX 使用 AUCTeX 原生的宏与环境�
   :hook (after-init . marginalia-mode))
 #+end_src
 
+*** Completion Icons
+
+候选前的图标使用 Nerd Icons 与 Marginalia 的补全装饰，不修改候选本身或匹配逻辑。
+使用已安装的 =Symbols Nerd Font Mono= 字体；图标与候选说明在原生竖排列表中显示。
+候选名称和 AUCTeX 参数处理保留原值。
+
+#+begin_src emacs-lisp
+(use-package nerd-icons-completion
+  :if (or (not noninteractive) (locate-library "nerd-icons-completion"))
+  :ensure t
+  :after marginalia
+  :demand t
+  :init
+  (add-to-list 'package-selected-packages 'nerd-icons-completion)
+  :custom
+  (nerd-icons-font-family "Symbols Nerd Font Mono")
+  (nerd-icons-completion-icon-size 1.0)
+  :config
+  (add-hook 'marginalia-mode-hook #'nerd-icons-completion-marginalia-setup)
+  (nerd-icons-completion-mode 1))
+#+end_src
+
 *** Orderless
+
+普通候选用空格分词，词序不限；命令、变量和符号额外支持首字母匹配。
+文件先用 =basic= 处理路径和远程主机，再用 =partial-completion= 支持路径缩写
+与文件名子串，最后用 Orderless 处理多词筛选。反斜杠可转义文件名中的空格。
+末尾 =$= 匹配结尾，=~= 使用模糊匹配，=== 使用字面匹配，=!= 排除匹配。
 
 #+begin_src emacs-lisp
 (use-package orderless
@@ -1188,30 +1199,22 @@ Vertico 显示迷你缓冲区候选；LaTeX 使用 AUCTeX 原生的宏与环境�
      ((and (or minibuffer-completing-file-name
                (derived-mode-p 'eshell-mode))
            (string-match-p "\\`\\.." word))
-      `(orderless-regexp . ,(concat "\\." (substring word 1) (+orderless--consult-suffix))))))
+      `(orderless-regexp . ,(concat (regexp-quote word) (+orderless--consult-suffix))))))
 
   ;; Define orderless style with initialism by default
   (orderless-define-completion-style +orderless-with-initialism
     (orderless-matching-styles '(orderless-initialism orderless-literal orderless-regexp)))
 
-  ;; Certain dynamic completion tables (completion-table-dynamic) do not work
-  ;; properly with orderless. One can add basic as a fallback.  Basic will only
-  ;; be used when orderless fails, which happens only for these special
-  ;; tables. Also note that you may want to configure special styles for special
-  ;; completion categories, e.g., partial-completion for files.
+  ;; Keep basic for dynamic tables, and try it first for file/TRAMP prompts.
+  ;; Emacs 31's leading wildcard enables substring matching in file names.
   (setq completion-styles '(orderless basic)
         completion-category-defaults nil
-        ;;; Enable partial-completion for files.
-        ;;; Either give orderless precedence or partial-completion.
-        ;;; Note that completion-category-overrides is not really an override,
-        ;;; but rather prepended to the default completion-styles.
-        ;; completion-category-overrides '((file (styles orderless partial-completion))) ;; orderless is tried first
-        completion-category-overrides '((file (styles partial-completion)) ;; partial-completion is tried first
-                                        ;; enable initialism by default for symbols
+        completion-pcm-leading-wildcard t
+        completion-category-overrides '((file (styles basic partial-completion orderless))
                                         (command (styles +orderless-with-initialism))
                                         (variable (styles +orderless-with-initialism))
                                         (symbol (styles +orderless-with-initialism)))
-        orderless-component-separator #'orderless-escapable-split-on-space ;; allow escaping space with backslash!
+        orderless-component-separator #'orderless-escapable-split
         orderless-style-dispatchers (list #'+orderless-consult-dispatch
                                           #'orderless-kwd-dispatch
                                           #'orderless-affix-dispatch)))
@@ -2046,6 +2049,17 @@ visibility, and files outside Notes are left alone."
 #+begin_src emacs-lisp
 (setq vc-git-print-log-follow t)
 (setq vc-git-diff-switches '("--histogram"))  ; Faster algorithm for diffing.
+
+(defun my/git-auto-revert-vc-info ()
+  "Keep the visited local Git file's status current, including external commits."
+  (setq-local auto-revert-check-vc-info
+              (and buffer-file-name
+                   (not (file-remote-p buffer-file-name))
+                   (eq (vc-backend buffer-file-name) 'Git))))
+
+;; VC's own find-file hook runs first.  Reuse Auto Revert's existing timer
+;; instead of running Git commands while rendering the mode line.
+(add-hook 'find-file-hook #'my/git-auto-revert-vc-info 90)
 #+end_src
 
 *** Auto Save
@@ -2851,9 +2865,11 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
           (set-face-attribute 'variable-pitch frame
                             :font (font-spec :family "Aporetic Serif Mono"))
           (set-face-attribute 'mode-line-active frame
-                            :font (font-spec :family "Aporetic Serif Mono" :weight 'bold))
+                            :font (font-spec :family "Aporetic Serif Mono" :weight 'bold :slant 'normal)
+                            :slant 'normal)
           (set-face-attribute 'mode-line-inactive frame
-                            :font "Aporetic Serif Mono"))
+                            :font (font-spec :family "Aporetic Serif Mono" :slant 'normal)
+                            :slant 'normal))
 
         (when (find-font (font-spec :family "JetBrains Mono NL"))
           (set-face-attribute 'line-number frame :font "JetBrains Mono NL")
@@ -2872,6 +2888,8 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
 
 *** Theme
 
+光标颜色由主题配色统一设置为原来的金黄色，避免主题加载覆盖 frame 默认颜色。
+
 #+begin_src emacs-lisp
 (let ((custom-theme-load-path '(t))
       (inhibit-redisplay t))
@@ -2881,13 +2899,21 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
   (setq modus-themes-italic-constructs t
         modus-themes-bold-constructs t
         modus-themes-common-palette-overrides
-        '((bg-paren-match unspecified)
+        '((cursor "#dfb350")
+          (bg-paren-match unspecified)
           (fg-paren-match red-intense)))
   (mapc #'disable-theme custom-enabled-themes)
   (load-theme 'modus-operandi-deuteranopia t))
 #+end_src
 
 *** Mode Line
+
+内置 VC 标记显示当前文件的 Git 状态：=Git-main= 表示已提交，
+=Git:main=（橙色加粗）表示已保存但未提交；已暂存的改动也会继续提示。
+新加入版本管理的文件使用橙色加粗的 =Git@main=，冲突使用红色的 =Git!main=。
+分支名随实际仓库变化。=**= 表示尚未保存的编辑，与 Git 提交状态分别显示。
+本地 Git 文件的状态每 3 秒自动检查一次，也能识别从终端完成的暂存与提交。
+Git 提示使用正体；主题对正文强调和注释的斜体设置保留。
 
 #+begin_src emacs-lisp
 (setq mode-line-percent-position nil
@@ -2901,6 +2927,19 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
 (setq-default mode-line-format
               (delq 'mode-line-buffer-identification
                     (copy-sequence (default-value 'mode-line-format))))
+
+;; Style the built-in VC indicator, retaining its branch name and menu.
+;; Use contrasting amber in light/dark themes and red for conflicts.
+(custom-set-faces
+ '(vc-up-to-date-state ((t (:inherit vc-state-base :weight normal :slant normal))))
+ '(vc-edited-state
+   ((((class color) (background light)) (:foreground "#9d5000" :weight bold :slant normal))
+    (((class color) (background dark)) (:foreground "#d0bc00" :weight bold :slant normal))
+    (t (:inherit warning :weight bold :slant normal))))
+ '(vc-locally-added-state ((t (:inherit vc-edited-state :slant normal))))
+ '(vc-conflict-state ((t (:inherit error :weight bold :slant normal))))
+ '(vc-removed-state ((t (:inherit error :weight bold :slant normal))))
+ '(vc-missing-state ((t (:inherit error :weight bold :slant normal)))))
 #+end_src
 
 *** hl-line-Mode
