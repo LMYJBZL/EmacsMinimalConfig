@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-10-05 11:29:32 baojie>
+#+DATE: Time-stamp: <2026-10-05 21:42:03 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no :mkdirp yes
@@ -1098,10 +1098,16 @@ are defining or executing a macro."
 
 *** Vertico
 
-使用 Vertico 原生的单列候选布局，最多显示四行，frame 宽度保持不变。
-LaTeX 宏与环境通过 AUCTeX 原生提示选择，后续文件及参数提示也使用相同补全界面。
+恢复按命令与候选类型区分的布局，并保留编号与补全图标。
+LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符（含编号和图标）。
+每栏仍放九个候选，超长内容在栏内换行显示完整名称，不截短。
+栏数只受当前窗口可用宽度限制，不再限制最多四栏，frame 宽度不变。
+修改 =my/vertico-grid-column-width= 可统一调整栏宽；窗口过窄时自动使用单栏。
+文件、命令和其他候选沿用带编号的反向列表；目录提纲使用独立缓冲区。
 =Tab= 填入选中项，=RET= 确认，=C-j= 提交自己输入的内容。
 文件选择中 =RET= 进入选中的目录，=M-DEL= 删除一层路径。
+候选中 =M-G= 切换原生网格，=M-V= 切换竖排；=C-M-n/p= 切换候选分组。
+=Esc= 或 =C-g= 取消当前提示；这些按键只在补全提示中生效。
 
 #+begin_src emacs-lisp
 (use-package vertico
@@ -1112,20 +1118,132 @@ LaTeX 宏与环境通过 AUCTeX 原生提示选择，后续文件及参数提示
    :map vertico-map
    ("TAB" . vertico-insert)
    ("<tab>" . vertico-insert)
+   ("<escape>" . minibuffer-keyboard-quit)
+   ("C-M-n" . vertico-next-group)
+   ("C-M-p" . vertico-previous-group)
    ("M-P" . vertico-repeat-previous)
    ("M-N" . vertico-repeat-next))
   :hook
   ((rfn-eshadow-update-overlay . vertico-directory-tidy)
    (minibuffer-setup . vertico-repeat-save))
   :init
-  ;; Keep Vertico's native layout instead of overriding its display methods.
-  (when (bound-and-true-p vertico-multiform-mode)
-    (vertico-multiform-mode -1))
+  ;; Load extensions whose customization variables are set below.  This keeps
+  ;; startup independent of whether another multiform mode loaded them first.
+  (require 'vertico-grid)
+  (require 'vertico-buffer)
+  (require 'vertico-indexed)
+  (require 'vertico-multiform)
   (vertico-mode 1)
+  (vertico-multiform-mode 1)
   :custom
   (vertico-cycle t)
-  (vertico-count 4)
-  (vertico-resize nil))
+  (vertico-count 9)
+  (vertico-indexed-start 1)
+  (vertico-resize nil)
+  (vertico-grid-separator "   ")
+  (vertico-grid-lookahead 37)
+  ;; Grid affixation must be enabled for completion icon prefixes.
+  (vertico-grid-annotate 1)
+  :custom-face
+  ;; Grid columns use character widths, so keep indices at the text size.
+  (vertico-indexed ((t (:inherit font-lock-comment-face :height 1.0
+                                :weight normal :slant normal))))
+  :config
+  (setq vertico-multiform-commands
+        '((consult-outline buffer indexed)
+          (consult-buffer reverse indexed (vertico-resize . nil))
+          (consult-xref grid indexed)
+          (TeX-insert-macro grid indexed)
+          (LaTeX-environment grid indexed)
+          (LaTeX-section flat indexed)))
+
+  (setq vertico-multiform-categories
+        '((symbol reverse indexed
+                  (vertico-sort-function . vertico-sort-alpha))
+          (file reverse indexed
+                (vertico-sort-function . vertico-sort-directories-first)
+                (:keymap . vertico-directory-map))
+          (t reverse))))
+
+#+end_src
+
+固定栏宽只覆盖 Grid 的显示排版，候选集合、匹配、高亮和原生翻页按键保留。
+
+#+begin_src emacs-lisp
+;; (with-eval-after-load 'vertico-grid
+;;   (defcustom my/vertico-grid-column-width 24
+;;     "Grid cell width in character columns, including indices and icons."
+;;     :type 'natnum :group 'vertico)
+;;
+;;   (defun my/vertico-grid-wrap (text width)
+;;     "Wrap TEXT at WIDTH without dropping characters or their faces."
+;;     ;; Marginalia aligns annotations to the whole window; inside a grid cell
+;;     ;; the annotation follows the candidate instead.
+;;     (let ((pos 0) lines)
+;;       (while (< pos (length text))
+;;         (let* ((next (next-single-property-change pos 'display text (length text)))
+;;                (display (get-text-property pos 'display text)))
+;;           (when (and (consp display) (eq (car display) 'space)
+;;                      (plist-member (cdr display) :align-to))
+;;             (remove-text-properties pos next '(display nil) text))
+;;           (setq pos next)))
+;;       (dolist (line (split-string (string-trim-right text "\n") "\n"))
+;;         (while (not (string-empty-p line))
+;;           (let ((part (truncate-string-to-width line width)))
+;;             (when (string-empty-p part)
+;;               (setq part (substring line 0 1)))
+;;             (push part lines)
+;;             (setq line (substring line (length part))))))
+;;       (or (nreverse lines) '(""))))
+;;
+;;   (cl-defmethod vertico--arrange-candidates :around
+;;     (&context (vertico-grid-mode (eql t)))
+;;     "Use equal-width cells, keeping Vertico's candidates and navigation."
+;;     (let* ((available (max 2 (vertico--window-width)))
+;;            (width (min (max 2 my/vertico-grid-column-width) available))
+;;            (sep (string-width vertico-grid-separator))
+;;            (step (+ width sep))
+;;            (rows vertico-count)
+;;            ;; The number of columns follows window width, not candidate lengths.
+;;            (columns (max 1 (/ (+ available sep) step)))
+;;            (count (* rows columns))
+;;            (start (* count (/ (max 0 vertico--index) count)))
+;;            (candidates
+;;             (vertico--affixate
+;;              (cl-loop repeat count for cand in (nthcdr start vertico--candidates)
+;;                       collect (vertico--hilit cand))))
+;;            (cells
+;;             (vconcat
+;;              (cl-loop for (cand prefix suffix) in candidates
+;;                       for index from start collect
+;;                       (my/vertico-grid-wrap
+;;                        (vertico--format-candidate cand prefix suffix index start)
+;;                        width))))
+;;            lines)
+;;       (setq vertico-grid--columns columns)
+;;       (dotimes (row (min rows (length cells)))
+;;         (let* ((row-cells
+;;                 (cl-loop for col below columns
+;;                          for index = (+ row (* col rows))
+;;                          collect (and (< index (length cells)) (aref cells index))))
+;;                (height (apply #'max (mapcar #'length row-cells))))
+;;           (dotimes (line height)
+;;             (push
+;;              (concat
+;;               (mapconcat
+;;                #'identity
+;;                (cl-loop for cell in row-cells for col from 0 collect
+;;                         (concat
+;;                          (when (> col 0)
+;;                            (concat
+;;                             (propertize " " 'display
+;;                                         `(space :align-to (+ left ,(- (* col step) sep))))
+;;                             vertico-grid-separator))
+;;                          (or (nth line cell) "")))
+;;                "")
+;;               "\n")
+;;              lines))))
+;;       (nreverse lines))))
 
 (use-package vertico-directory
   :ensure nil
@@ -1139,17 +1257,23 @@ LaTeX 宏与环境通过 AUCTeX 原生提示选择，后续文件及参数提示
 *** Marginalia
 
  [[https://github.com/minad/marginalia][Marginalia]] 插件给迷你缓冲区的补全候选条目添加一些提示信息。
+列表中的说明右对齐；=M-A= 切换候选说明的样式，也可关闭说明。
 
 #+begin_src emacs-lisp
 (use-package marginalia
   :if (or (not noninteractive) (locate-library "marginalia"))
+  :bind (:map minibuffer-local-map
+              ("M-A" . marginalia-cycle))
+  :custom
+  (marginalia-align 'right)
   :hook (after-init . marginalia-mode))
 #+end_src
 
 *** Completion Icons
 
 候选前的图标使用 Nerd Icons 与 Marginalia 的补全装饰，不修改候选本身或匹配逻辑。
-使用已安装的 =Symbols Nerd Font Mono= 字体；图标与候选说明在原生竖排列表中显示。
+使用已安装的 =Symbols Nerd Font Mono= 字体；列表保留图标与候选说明，网格也显示图标。
+未标注候选类型的提示不显示通用箭头；文件和命令等明确类型的图标仍保留。
 候选名称和 AUCTeX 参数处理保留原值。
 
 #+begin_src emacs-lisp
@@ -1164,6 +1288,9 @@ LaTeX 宏与环境通过 AUCTeX 原生提示选择，后续文件及参数提示
   (nerd-icons-font-family "Symbols Nerd Font Mono")
   (nerd-icons-completion-icon-size 1.0)
   :config
+  ;; Generic prompts (including AUCTeX) do not need a fallback arrow icon.
+  (setq nerd-icons-completion-category-icons
+        (assq-delete-all nil nerd-icons-completion-category-icons))
   (add-hook 'marginalia-mode-hook #'nerd-icons-completion-marginalia-setup)
   (nerd-icons-completion-mode 1))
 #+end_src
@@ -2904,6 +3031,53 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
           (fg-paren-match red-intense)))
   (mapc #'disable-theme custom-enabled-themes)
   (load-theme 'modus-operandi-deuteranopia t))
+#+end_src
+
+*** LaTeX Menu
+
+LaTeX 编辑、编译、预览、数学、引用、片段和诊断集中到顶部的一个 LaTeX 菜单。
+复用原来的子菜单及命令，只在 LaTeX 缓冲区整理菜单位置；其他文件类型的菜单保持原样。
+
+#+begin_src emacs-lisp
+(defvar-local my/latex-menu-active nil)
+(defvar-local my/latex-menu-map-alist nil)
+
+(defun my/setup-latex-menu ()
+  "Collect LaTeX menus without changing their commands or editing keys."
+  (when (derived-mode-p 'latex-mode 'LaTeX-mode)
+    ;; Resolve the original menus when rebuilding an existing buffer's menu.
+    (let* ((my/latex-menu-active nil)
+           (editing-menu (key-binding [menu-bar latex]))
+           (grouped-menu (when (keymapp editing-menu)
+                           (copy-keymap editing-menu)))
+           (map (make-sparse-keymap)))
+      (when grouped-menu
+        (dolist (entry '((flymake . "Diagnostics")
+                         (yasnippet . "Snippets")
+                         (ref . "References")
+                         (math . "Math")
+                         (preview . "Preview")
+                         (command . "Compile")))
+          (let ((original (key-binding (vector 'menu-bar (car entry)))))
+            (when (keymapp original)
+              (define-key grouped-menu (vector (car entry))
+                          (list 'menu-item (cdr entry) original)))
+            (define-key map (vector 'menu-bar (car entry)) #'undefined)))
+        ;; Use a distinct event and mask the original menu.  Reusing `latex'
+        ;; makes Emacs merge both keymaps into duplicate native menu panes.
+        (define-key map [menu-bar latex] #'undefined)
+        (define-key map [menu-bar my-latex]
+                    (list 'menu-item "LaTeX" grouped-menu))
+        (setq-local my/latex-menu-map-alist
+                    (list (cons 'my/latex-menu-active map)))))
+    (setq-local my/latex-menu-active (and my/latex-menu-map-alist t))))
+
+;; A buffer-local emulation map takes precedence over minor-mode menus,
+;; while containing no bindings outside the menu bar.
+(add-to-list 'emulation-mode-map-alists 'my/latex-menu-map-alist)
+(dolist (hook '(after-change-major-mode-hook LaTeX-math-mode-hook
+                reftex-mode-hook yas-minor-mode-hook flymake-mode-hook))
+  (add-hook hook #'my/setup-latex-menu 90))
 #+end_src
 
 *** Mode Line
