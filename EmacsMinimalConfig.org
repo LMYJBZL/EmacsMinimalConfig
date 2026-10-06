@@ -1,6 +1,6 @@
 #+TITLE: Emacs Minimal 配置文件
 #+AUTHOR: Baojie
-#+DATE: Time-stamp: <2026-10-05 21:42:03 baojie>
+#+DATE: Time-stamp: <2026-10-06 08:24:43 baojie>
 :PROPERTIES:
 #+STARTUP: content
 #+PROPERTY: header-args :tangle no :mkdirp yes
@@ -92,34 +92,9 @@ Snippets 的源文件也保存在本 Org 中，导出到 =~/.emacs.d/etc/snippet
 (defvar minimal-emacs-debug (bound-and-true-p init-file-debug)
   "Non-nil to enable debug.")
 
-(defvar minimal-emacs-optimize-startup-gc t
-  "If non-nil, increase `gc-cons-threshold' during startup to reduce pauses.
-After Emacs finishes loading, `gc-cons-threshold' is restored to the value
-stored in `minimal-emacs-gc-cons-threshold'.")
-
-(defvar minimal-emacs-startup-gc-cons-threshold (* 128 1024 1024)
-  "GC allocation threshold during startup, including first-time installation.")
-
-(when minimal-emacs-optimize-startup-gc
-  ;; Keep startup allocations bounded during a long package installation.
-  (setq gc-cons-threshold minimal-emacs-startup-gc-cons-threshold
-        gc-cons-percentage 0.6))
-
-(defvar minimal-emacs-gc-cons-threshold (* 32 1024 1024)
-  "Value to which `gc-cons-threshold' is set after Emacs startup.
-Ignored if `minimal-emacs-optimize-startup-gc' is nil.")
-
-(defvar minimal-emacs-gc-cons-percentage 0.1
-  "Value to which `gc-cons-percentage' is set after Emacs startup.
-Ignored if `minimal-emacs-optimize-startup-gc' is nil.")
-
-(defvar minimal-emacs-gc-cons-threshold-restore-delay nil
-  "Number of seconds to wait before restoring `gc-cons-threshold'.")
-
-(defvar minimal-emacs-optimize-file-name-handler-alist t
-  "Enable optimization of `file-name-handler-alist'.
-When non-nil, this variable activates optimizations to reduce file name handler
-lookups during Emacs startup.")
+;; Keep startup allocations bounded, including first-time package installation.
+(setq gc-cons-threshold (* 128 1024 1024)
+      gc-cons-percentage 0.6)
 
 #+end_src
 
@@ -194,13 +169,14 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
 ** Frame Defaults
 
 窗口外观参数只在这里定义。=early-init= 在首个图形 frame 创建前执行，
-因此首个窗口和以后新建的窗口使用相同默认值；字体在 init 中按图形 frame 设置。
+因此首个窗口和以后新建的窗口使用相同默认值；其他字体与默认 fontset 在 init 中统一设置。
+菜单栏开关在 init 中设置，避免被 macOS 图形界面初始化覆盖。
 
 #+begin_src emacs-lisp
 (defconst my/frame-parameters
   '((fullscreen . fullheight)
     (width . 123)
-    (menu-bar-lines . 0)
+    (font . "Aporetic Sans Mono-13")
     (tool-bar-lines . 0)
     (vertical-scroll-bars . nil)
     (horizontal-scroll-bars . nil)
@@ -215,8 +191,9 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
 (setq frame-resize-pixelwise t
       frame-inhibit-implied-resize t)
 
-(when (eq system-type 'darwin)
-  (setq ns-pop-up-frames t))
+;; Finder opens reuse a visible window showing the file, or create a frame.
+(setq ns-pop-up-frames t
+      ns-auto-hide-menu-bar nil)
 #+end_src
 
 ** Garbage Collection
@@ -226,26 +203,12 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
 这里已负责恢复正常阈值，不再叠加另一套 GC 管理包。
 
 #+begin_src emacs-lisp
-;; Garbage collection significantly affects startup times. This setting delays
-;; garbage collection during startup but will be reset later.
+(defun my/restore-startup-gc ()
+  "Restore the normal garbage collection thresholds after startup."
+  (setq gc-cons-threshold (* 32 1024 1024)
+        gc-cons-percentage 0.1))
 
-(defun minimal-emacs--restore-gc-values ()
-  "Restore garbage collection values to minimal-emacs.d values."
-  (setq gc-cons-threshold minimal-emacs-gc-cons-threshold)
-  (setq gc-cons-percentage minimal-emacs-gc-cons-percentage))
-
-(defun minimal-emacs--restore-gc ()
-  "Restore garbage collection settings."
-  (if (and (bound-and-true-p minimal-emacs-gc-cons-threshold-restore-delay)
-           ;; In noninteractive mode, the event loop does not run
-           (not noninteractive))
-      ;; Defer garbage collection during initialization to avoid 2 collections.
-      (run-with-timer minimal-emacs-gc-cons-threshold-restore-delay nil
-                      #'minimal-emacs--restore-gc-values)
-    (minimal-emacs--restore-gc-values)))
-
-(when minimal-emacs-optimize-startup-gc
-  (add-hook 'emacs-startup-hook #'minimal-emacs--restore-gc 105))
+(add-hook 'emacs-startup-hook #'my/restore-startup-gc 105)
 #+end_src
 
 ** Native Compilation and Byte Compilation
@@ -328,56 +291,6 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
       (setq command-line-x-option-alist nil))))
 #+end_src
 
-*** File-Name-Handler-Alist
-
-#+begin_src emacs-lisp
-(defvar minimal-emacs--old-file-name-handler-alist (default-toplevel-value
-                                                    'file-name-handler-alist))
-
-(defun minimal-emacs--respect-file-handlers (fn args-left)
-  "Respect file handlers.
-FN is the function and ARGS-LEFT is the same argument as `command-line-1'.
-Emacs processes command-line files very early in startup. These files may
-include special paths like TRAMP paths, so restore `file-name-handler-alist' for
-this stage of initialization."
-  (let ((file-name-handler-alist (if args-left
-                                     minimal-emacs--old-file-name-handler-alist
-                                   file-name-handler-alist)))
-    (funcall fn args-left)))
-
-(defun minimal-emacs--restore-file-name-handler-alist ()
-  "Restore `file-name-handler-alist'."
-  (set-default-toplevel-value
-   'file-name-handler-alist
-   ;; Merge instead of overwrite to preserve any changes made since startup.
-   (delete-dups (append file-name-handler-alist
-                        minimal-emacs--old-file-name-handler-alist))))
-
-(when (and minimal-emacs-optimize-file-name-handler-alist
-           (not minimal-emacs-debug))
-  ;; Determine the state of bundled libraries using calc-loaddefs.el. If
-  ;; compressed, retain the gzip handler in `file-name-handler-alist`. If
-  ;; compiled or neither, omit the gzip handler during startup for improved
-  ;; startup and package load time.
-  (set-default-toplevel-value
-   'file-name-handler-alist
-   (if (locate-file-internal "calc-loaddefs.el" load-path)
-       nil
-     (list (rassq 'jka-compr-handler
-                  minimal-emacs--old-file-name-handler-alist))))
-
-  ;; Ensure the new value persists through any current let-binding.
-  (put 'file-name-handler-alist 'initial-value
-       minimal-emacs--old-file-name-handler-alist)
-
-  ;; Emacs processes command-line files very early in startup. These files may
-  ;; include special paths TRAMP. Restore `file-name-handler-alist'.
-  (advice-add 'command-line-1 :around #'minimal-emacs--respect-file-handlers)
-
-  (add-hook 'emacs-startup-hook #'minimal-emacs--restore-file-name-handler-alist
-            101))
-#+end_src
-
 ** Security
 
 #+begin_src emacs-lisp
@@ -425,26 +338,6 @@ this stage of initialization."
 
 #+begin_src emacs-lisp
 ;;; init.el --- Init -*- lexical-binding: t; -*-
-
-;; Author: James Cherti <https://www.jamescherti.com/contact/>
-;; URL: https://github.com/jamescherti/minimal-emacs.d
-;; Package-Requires: ((emacs "31.1"))
-;; Keywords: maint
-;; Version: 1.4.1
-;; SPDX-License-Identifier: GPL-3.0-or-later
-
-;;; Commentary:
-;; The minimal-emacs.d project is a lightweight and optimized Emacs base
-;; (init.el and early-init.el) that gives you full control over your
-;; configuration. It provides better defaults, an optimized startup, and a clean
-;; foundation for building your own vanilla Emacs setup.
-;;
-;; Building the minimal-emacs.d init.el and early-init.el was the result of
-;; extensive research and testing to fine-tune the best parameters and
-;; optimizations for an Emacs configuration.
-;;
-;; Generated from EmacsMinimalConfig.org.  Edit the Org source, then
-;; generate the runtime files when applying the configuration.
 
 ;;; Code:
 #+end_src
@@ -532,7 +425,7 @@ this stage of initialization."
 (use-package exec-path-from-shell
   :if (and (or (display-graphic-p) (daemonp))
            (eq system-type 'darwin)) ; macOS only
-  :defer 1
+  :demand t
   :functions exec-path-from-shell-initialize
   :init
   (setq exec-path-from-shell-variables
@@ -550,9 +443,7 @@ this stage of initialization."
           "LANG"
           "LC_CTYPE"))
   :config
-  (exec-path-from-shell-initialize)
-  (when (fboundp 'my/configure-dired-listing)
-    (my/configure-dired-listing)))
+  (exec-path-from-shell-initialize))
 #+end_src
 
 ** 通用编辑
@@ -585,16 +476,11 @@ this stage of initialization."
 (setq bookmark-save-flag 1)
 (setq uniquify-buffer-name-style 'forward)
 (setq remote-file-name-inhibit-cache 50)
+;; Preserve text copied in another app before an Emacs kill replaces it.
+(setq save-interprogram-paste-before-kill t)
 
-;; Disable fontification during user input to reduce lag in large buffers.
-;; Also helps marginally with scrolling performance.
-;; (setq redisplay-skip-fontification-on-input t)
-
-(defun my/maybe-skip-fontification ()
-  "Let redisplay defer fontification when a large buffer cannot keep up."
-  (setq-local redisplay-skip-fontification-on-input (> (buffer-size) 50000)))
-
-(add-hook 'find-file-hook #'my/maybe-skip-fontification)
+;; Let Emacs defer fontification during input when redisplay cannot keep up.
+(setq-default redisplay-skip-fontification-on-input t)
 #+end_src
 
 *** Misc
@@ -796,33 +682,18 @@ Markdown 保留具有换行含义的行尾空格；程序代码继续使用 whit
 
 *** Iedit
 
+=C-;= 使用 Iedit 原生命令编辑当前函数，=C-M-;= 在整个缓冲区中编辑。
+
 #+begin_src emacs-lisp
 (use-package iedit
   :if (or (not noninteractive) (locate-library "iedit"))
   :ensure t
-  ;; NonGNU's 0.9.9.9.9 release predates upstream's lexical-binding fix.
+  ;; NonGNU's release predates upstream's lexical-binding fix.
   :pin melpa
   :init
-  (setq iedit-toggle-key-default nil)   ; 禁止 iedit 自动绑定 C-;
-  :commands (iedit-mode iedit-start))
-
-(defun iedit-dwim (arg)
-  "Starts iedit but uses \\[narrow-to-defun] to limit its scope."
-  (interactive "P")
-  (if arg
-      (iedit-mode)
-    (save-excursion
-      (save-restriction
-        (widen)
-        ;; this function determines the scope of `iedit-start'.
-        (if (bound-and-true-p iedit-mode)
-            (iedit-done)
-          ;; `current-word' can of course be replaced by other
-          ;; functions.
-          (narrow-to-defun)
-          (iedit-mode))))))
-
-(keymap-global-set "C-;" #'iedit-dwim)
+  (setq iedit-toggle-key-default nil)
+  :bind (("C-;" . iedit-mode-toggle-on-function)
+         ("C-M-;" . iedit-mode)))
 #+end_src
 
 *** Expand-region
@@ -1141,7 +1012,6 @@ LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符�
   (vertico-indexed-start 1)
   (vertico-resize nil)
   (vertico-grid-separator "   ")
-  (vertico-grid-lookahead 37)
   ;; Grid affixation must be enabled for completion icon prefixes.
   (vertico-grid-annotate 1)
   :custom-face
@@ -1170,81 +1040,6 @@ LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符�
 固定栏宽只覆盖 Grid 的显示排版，候选集合、匹配、高亮和原生翻页按键保留。
 
 #+begin_src emacs-lisp
-;; (with-eval-after-load 'vertico-grid
-;;   (defcustom my/vertico-grid-column-width 24
-;;     "Grid cell width in character columns, including indices and icons."
-;;     :type 'natnum :group 'vertico)
-;;
-;;   (defun my/vertico-grid-wrap (text width)
-;;     "Wrap TEXT at WIDTH without dropping characters or their faces."
-;;     ;; Marginalia aligns annotations to the whole window; inside a grid cell
-;;     ;; the annotation follows the candidate instead.
-;;     (let ((pos 0) lines)
-;;       (while (< pos (length text))
-;;         (let* ((next (next-single-property-change pos 'display text (length text)))
-;;                (display (get-text-property pos 'display text)))
-;;           (when (and (consp display) (eq (car display) 'space)
-;;                      (plist-member (cdr display) :align-to))
-;;             (remove-text-properties pos next '(display nil) text))
-;;           (setq pos next)))
-;;       (dolist (line (split-string (string-trim-right text "\n") "\n"))
-;;         (while (not (string-empty-p line))
-;;           (let ((part (truncate-string-to-width line width)))
-;;             (when (string-empty-p part)
-;;               (setq part (substring line 0 1)))
-;;             (push part lines)
-;;             (setq line (substring line (length part))))))
-;;       (or (nreverse lines) '(""))))
-;;
-;;   (cl-defmethod vertico--arrange-candidates :around
-;;     (&context (vertico-grid-mode (eql t)))
-;;     "Use equal-width cells, keeping Vertico's candidates and navigation."
-;;     (let* ((available (max 2 (vertico--window-width)))
-;;            (width (min (max 2 my/vertico-grid-column-width) available))
-;;            (sep (string-width vertico-grid-separator))
-;;            (step (+ width sep))
-;;            (rows vertico-count)
-;;            ;; The number of columns follows window width, not candidate lengths.
-;;            (columns (max 1 (/ (+ available sep) step)))
-;;            (count (* rows columns))
-;;            (start (* count (/ (max 0 vertico--index) count)))
-;;            (candidates
-;;             (vertico--affixate
-;;              (cl-loop repeat count for cand in (nthcdr start vertico--candidates)
-;;                       collect (vertico--hilit cand))))
-;;            (cells
-;;             (vconcat
-;;              (cl-loop for (cand prefix suffix) in candidates
-;;                       for index from start collect
-;;                       (my/vertico-grid-wrap
-;;                        (vertico--format-candidate cand prefix suffix index start)
-;;                        width))))
-;;            lines)
-;;       (setq vertico-grid--columns columns)
-;;       (dotimes (row (min rows (length cells)))
-;;         (let* ((row-cells
-;;                 (cl-loop for col below columns
-;;                          for index = (+ row (* col rows))
-;;                          collect (and (< index (length cells)) (aref cells index))))
-;;                (height (apply #'max (mapcar #'length row-cells))))
-;;           (dotimes (line height)
-;;             (push
-;;              (concat
-;;               (mapconcat
-;;                #'identity
-;;                (cl-loop for cell in row-cells for col from 0 collect
-;;                         (concat
-;;                          (when (> col 0)
-;;                            (concat
-;;                             (propertize " " 'display
-;;                                         `(space :align-to (+ left ,(- (* col step) sep))))
-;;                             vertico-grid-separator))
-;;                          (or (nth line cell) "")))
-;;                "")
-;;               "\n")
-;;              lines))))
-;;       (nreverse lines))))
-
 (use-package vertico-directory
   :ensure nil
   :after vertico
@@ -1350,36 +1145,12 @@ LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符�
 *** Consult
 
 #+begin_src emacs-lisp
-(defun my/ensure-embark-consult ()
-  "Install the integration without warnings about its unfinished transaction."
-  (unless (or noninteractive (package-installed-p 'embark-consult))
-    (require 'use-package-ensure)
-    (require 'warnings)
-    (let ((original-warn (symbol-function 'warn))
-          ;; Compile natively only after all dependencies are available.
-          (native-comp-jit-compilation nil)
-          (package-native-compile nil))
-      (cl-letf (((symbol-function 'warn)
-                 (lambda (message &rest args)
-                   ;; Embark loads while Consult's extensions are byte-compiled,
-                   ;; before package.el has unpacked embark-consult itself.
-                   ;; Only this known temporary warning is deferred; installation
-                   ;; errors and every other warning retain their normal behavior.
-                   (unless (equal message
-                                  "The package embark-consult should be installed if you use both Embark and Consult")
-                     (apply original-warn message args)))))
-        (use-package-ensure-elpa 'embark-consult '(t) nil)))))
-
-(my/ensure-embark-consult)
-
 (use-package embark-consult
   :if (or (not noninteractive)
           (and (locate-library "embark-consult")
                (locate-library "consult")
                (locate-library "embark")))
   :ensure t
-  ;; Dependencies may load during installation; the bootstrap above handles
-  ;; that temporary state before this declaration is evaluated.
   :after (embark consult)
   :demand t)
 
@@ -1416,87 +1187,7 @@ LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符�
    consult-source-recent-file consult-source-project-recent-file
    ;; :preview-key "M-."
    :preview-key '(:debounce 0.4 any))
-  (setq consult-narrow-key "<")
-
-  (defun my/consult-normalize-local-file (file)
-    "Return FILE as an absolute local path, or nil when FILE is unusable."
-    (when (and (stringp file) (not (string-empty-p file)))
-      (let ((file-name-handler-alist nil))
-        (expand-file-name file))))
-
-  (defun my/consult-file-suffix (file depth)
-    "Return FILE display suffix with DEPTH parent directories."
-    (let* ((abbr (abbreviate-file-name file))
-           (parts (split-string abbr "/" t))
-           (count (min (length parts) (1+ depth))))
-      (mapconcat #'identity (last parts count) "/")))
-
-  (defun my/consult-short-file-label (file files)
-    "Return the shortest label that distinguishes FILE among FILES."
-    (car (rassoc (my/consult-normalize-local-file file)
-                 (my/consult-short-file-candidates (cons file files)))))
-
-  (defun my/consult-short-file-candidates (files &optional predicate)
-    "Return display/path candidates for FILES using short unique labels.
-PREDICATE, when non-nil, is called once with each distinct normalized path.
-Preserve file order and compute parent suffixes only for repeated basenames."
-    (let ((seen (make-hash-table :test #'equal))
-          (groups (make-hash-table :test #'equal))
-          candidates)
-      (dolist (file files)
-        (when-let* ((path (my/consult-normalize-local-file file))
-                    ((not (gethash path seen))))
-          (puthash path t seen)
-          (when (or (not predicate) (funcall predicate path))
-            (let ((candidate (cons (my/consult-file-suffix path 0) path)))
-              (push candidate candidates)
-              (push candidate (gethash (car candidate) groups))))))
-      (maphash
-       (lambda (_basename group)
-         (when (cdr group)
-           (let ((counts (make-hash-table :test #'equal)) entries)
-             (dolist (candidate group)
-               (let (suffix suffixes)
-                 (dolist (part (nreverse
-                               (split-string
-                                (abbreviate-file-name (cdr candidate)) "/" t)))
-                   (setq suffix (if suffix (concat part "/" suffix) part))
-                   (push suffix suffixes)
-                   (puthash suffix (1+ (gethash suffix counts 0)) counts))
-                 (push (cons candidate (nreverse suffixes)) entries)))
-             (dolist (entry entries)
-               (setcar (car entry)
-                       (or (cl-find-if (lambda (suffix)
-                                         (= (gethash suffix counts) 1))
-                                       (cdr entry))
-                           ;; Abbreviation can make distinct paths identical.
-                           ;; Keep those candidates distinct with the full path.
-                           (cdar entry)))))))
-       groups)
-      (nreverse candidates)))
-
-  (defun my/consult-recent-file-items ()
-    "Return recent files with short unique display labels."
-    (let ((ht (consult--buffer-file-hash)))
-      (my/consult-short-file-candidates
-       (bound-and-true-p recentf-list)
-       (lambda (file)
-         (not (gethash file ht))))))
-
-  (defun my/consult-project-recent-file-items ()
-    "Return project recent files with short unique display labels."
-    (when-let* ((root (consult--project-root)))
-      (let ((ht (consult--buffer-file-hash)))
-        (my/consult-short-file-candidates
-         (bound-and-true-p recentf-list)
-         (lambda (file)
-           (and (not (gethash file ht))
-                (string-prefix-p root file)))))))
-
-  (plist-put consult-source-recent-file
-             :items #'my/consult-recent-file-items)
-  (plist-put consult-source-project-recent-file
-             :items #'my/consult-project-recent-file-items))
+  (setq consult-narrow-key "<"))
 
 #+end_src
 
@@ -1602,37 +1293,25 @@ Embark integrates with Consult and Vertico to provide context-sensitive actions 
 
 *** Flyspell
 
+使用 Ispell 的原生程序选择；找不到外部拼写程序时不启用 Flyspell。
+
 #+begin_src emacs-lisp
+(require 'ispell)
+
 (use-package flyspell
   :ensure nil
-  :hook (text-mode . my/flyspell-mode-if-available)
+  :if (executable-find ispell-program-name)
+  :hook (text-mode . flyspell-mode)
   :init
-  (require 'seq)
-
-  (defvar my/flyspell-program-candidates '("aspell" "hunspell" "ispell")
-    "Spell checker executables tried before enabling Flyspell.")
-
-  (defun my/flyspell-available-program ()
-    "Return the first available spell checker executable."
-    (seq-find #'executable-find my/flyspell-program-candidates))
-
-  (defun my/flyspell-mode-if-available ()
-    "Enable `flyspell-mode' only when a spell checker is available."
-    (when-let* ((program (my/flyspell-available-program)))
-      (setq-local ispell-program-name program)
-      (when (string= program "aspell")
-        (setq-local ispell-extra-args '("--sug-mode=ultra" "--lang=en_US")))
-      (flyspell-mode 1)))
-
-  ;; Let Flyspell ignore LaTeX commands and check only text-like parts.
+  (when (string= (file-name-nondirectory ispell-program-name) "aspell")
+    (setq ispell-extra-args '("--sug-mode=ultra" "--lang=en_US")))
+  ;; Let Flyspell check text rather than LaTeX commands.
   (put 'latex-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
   (put 'LaTeX-mode 'flyspell-mode-predicate 'tex-mode-flyspell-verify)
   :config
-  ;; Avoid noisy minibuffer messages during whole-buffer checks.
   (setq flyspell-issue-message-flag nil
         flyspell-issue-welcome-flag nil
         ispell-silently-savep t)
-
   (add-to-list 'ispell-skip-region-alist '(":\\(PROPERTIES\\|LOGBOOK\\):" . ":END:"))
   (add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_SRC" . "#\\+END_SRC"))
   (add-to-list 'ispell-skip-region-alist '("#\\+BEGIN_EXAMPLE" . "#\\+END_EXAMPLE")))
@@ -1834,9 +1513,9 @@ Text arguments inside math remain part of delimiter navigation."
                       (and end (cons (1- end) end)))))))))
         (error nil)))))
 
-(defun my/latex-math-forward ()
+(defun my/latex-math-forward (&optional bounds)
   "Advance through delimiters, then stop just after the current math."
-  (when-let* ((bounds (my/latex-math-end))
+  (when-let* ((bounds (or bounds (my/latex-math-end)))
               ((<= (point) (car bounds))))
     (let ((argument (eq (cadr (assoc (car texmathp-why)
                                      texmathp-tex-commands1)) 'arg-on)))
@@ -1874,31 +1553,31 @@ Text arguments inside math remain part of delimiter navigation."
         t))))
 
 (defun my/latex-tab (&optional indent-only)
-  "Expand snippets, advance fields/delimiters, or use native indentation.
-An ordinary active region and prefix argument always use native indentation."
+  "Expand snippets or navigate math; otherwise use native indentation."
   (interactive "P")
-  (let ((literal (or (nth 4 (syntax-ppss)) (TeX-verbatim-p))))
-    (cond
-     (indent-only (let ((tab-always-indent t)) (indent-for-tab-command)))
-     ((and (use-region-p)
-           (not (and (bound-and-true-p yas-minor-mode) (yas-active-snippets))))
-      (let ((tab-always-indent t)) (indent-for-tab-command)))
-     ((and (not literal) (bound-and-true-p yas-minor-mode) (yas-expand)))
-     ((and (bound-and-true-p yas-minor-mode) (yas-active-snippets))
-      (yas-next-field))
-     (literal (let ((tab-always-indent t)) (indent-for-tab-command)))
-     ((equal my/latex-tab-stop (cons (point) (buffer-chars-modified-tick))))
-     ((my/latex-math-end)
-      (unless (or
-               ;; At the start of a math line, indent before navigating.
-               (and (<= (point) (save-excursion (back-to-indentation) (point)))
-                    (let ((origin (point)) (tick (buffer-chars-modified-tick))
-                          (tab-always-indent t))
-                      (indent-for-tab-command)
-                      (or (/= origin (point)) (/= tick (buffer-chars-modified-tick)))))
-               (my/latex-math-forward))
-        (let ((tab-always-indent t)) (indent-for-tab-command))))
-     (t (let ((tab-always-indent t)) (indent-for-tab-command))))))
+  (let ((literal (or (nth 4 (syntax-ppss)) (TeX-verbatim-p)))
+        (snippet (and (bound-and-true-p yas-minor-mode) (yas-active-snippets)))
+        bounds)
+    (unless
+        (and (not (or indent-only
+                      (and (use-region-p) (not snippet))
+                      (and literal (not snippet))))
+             (cond
+              ((and (not literal) (bound-and-true-p yas-minor-mode) (yas-expand)) t)
+              ((and (bound-and-true-p yas-minor-mode) (yas-active-snippets))
+               (yas-next-field) t)
+              ((equal my/latex-tab-stop (cons (point) (buffer-chars-modified-tick))) t)
+              ((setq bounds (my/latex-math-end))
+               (or
+                ;; At the beginning of a math line, indent before navigating.
+                (and (<= (point) (save-excursion (back-to-indentation) (point)))
+                     (let ((origin (point)) (tick (buffer-chars-modified-tick))
+                           (tab-always-indent t))
+                       (indent-for-tab-command)
+                       (or (/= origin (point)) (/= tick (buffer-chars-modified-tick)))))
+                (my/latex-math-forward bounds)))))
+      (let ((tab-always-indent t))
+        (indent-for-tab-command)))))
 #+end_src
 
 **** AUCTeX 编译与预览
@@ -2177,16 +1856,6 @@ visibility, and files outside Notes are left alone."
 (setq vc-git-print-log-follow t)
 (setq vc-git-diff-switches '("--histogram"))  ; Faster algorithm for diffing.
 
-(defun my/git-auto-revert-vc-info ()
-  "Keep the visited local Git file's status current, including external commits."
-  (setq-local auto-revert-check-vc-info
-              (and buffer-file-name
-                   (not (file-remote-p buffer-file-name))
-                   (eq (vc-backend buffer-file-name) 'Git))))
-
-;; VC's own find-file hook runs first.  Reuse Auto Revert's existing timer
-;; instead of running Git commands while rendering the mode line.
-(add-hook 'find-file-hook #'my/git-auto-revert-vc-info 90)
 #+end_src
 
 *** Auto Save
@@ -2234,7 +1903,8 @@ visibility, and files outside Notes are left alone."
   ;; Revert other buffers (e.g, Dired)
   (setq global-auto-revert-non-file-buffers t)
   (setq global-auto-revert-ignore-modes '(Buffer-menu-mode))  ; Resolve issue #29
-  (setq auto-revert-interval 3)
+  (setq auto-revert-interval 3
+        auto-revert-check-vc-info t)
   (setq auto-revert-remote-files nil)
   (setq auto-revert-use-notify t)
   ;; 通知不可用时可以回退到轮询；其余情况由文件通知触发更新。
@@ -2259,39 +1929,18 @@ visibility, and files outside Notes are left alone."
          "/\\.LaTeX\\(?:Auto\\|Out\\)/"
          "\\.\\(gz\\|png\\|jpg\\|elc\\)$"
          #'my/hidden-file-p))
-  :config
-  (defconst my/recentf-keep-paths
-    (mapcar (lambda (path)
-              (let ((full-path (expand-file-name path)))
-                (if (directory-name-p path)
-                    (file-name-as-directory full-path)
-                  full-path)))
-            '("~/Documents/Notes/课/当前学期/"
-              "~/Documents/Notes/Slides/"
-              "~/Documents/Notes/Papers/"
-              "~/Documents/Notes/Drafts/"
-              "~/Documents/Notes/Misc/"
-              "~/Documents/Notes/Review/"
-              "~/Documents/Archives/EmacsMinimalConfig/")))
-
-  (defconst my/recentf-keep-directories
-    (seq-filter #'directory-name-p my/recentf-keep-paths)
-    "Directories whose files should always stay in `recentf-list'.")
-
-  (defconst my/recentf-keep-files
-    (seq-remove #'directory-name-p my/recentf-keep-paths)
-    "Files that should always stay in `recentf-list'.")
-
-  (defun my/recentf-keep-p (file)
-    "Return non-nil when FILE should be kept by `recentf'."
-    (let ((full-path (expand-file-name file)))
-      (or (member full-path my/recentf-keep-files)
-          (cl-some (lambda (dir)
-                     (string-prefix-p dir full-path))
-                   my/recentf-keep-directories))))
-
-  (setq recentf-keep '(my/recentf-keep-p file-remote-p file-readable-p))
-  )
+  (recentf-keep
+   (list
+    (concat "\\`\\(?:" (regexp-quote (directory-file-name (expand-file-name "~")))
+            "\\|~\\)/"
+            (regexp-opt '("Documents/Notes/课/当前学期/"
+                          "Documents/Notes/Slides/"
+                          "Documents/Notes/Papers/"
+                          "Documents/Notes/Drafts/"
+                          "Documents/Notes/Misc/"
+                          "Documents/Notes/Review/"
+                          "Documents/Archives/EmacsMinimalConfig/")))
+    #'file-remote-p #'file-readable-p)))
 #+end_src
 
 *** Saveplace
@@ -2332,17 +1981,17 @@ Enables Emacs to remember the last location within a file upon reopening.
 这是显示过滤，不删除文件，也不影响 AUCTeX 调用 Skim 预览 PDF。
 
 #+begin_src emacs-lisp
-(defun my/configure-dired-listing ()
-  "Use GNU ls when available, including after importing the shell PATH."
-  (when-let* ((gls (executable-find "gls")))
-    (setq dired-use-ls-dired t
-          insert-directory-program gls
-          dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first")))
-
-(my/configure-dired-listing)
-
-(setq dired-listing-switches (or dired-listing-switches
-                               "-lah"))
+;; Shell PATH has already been imported.  Choose one directory-listing backend.
+(if-let* ((gls (executable-find "gls")))
+    (setq insert-directory-program gls
+          dired-use-ls-dired t
+          dired-listing-switches "-laGhv --time-style=long-iso --group-directories-first")
+  (require 'ls-lisp)
+  (setq ls-lisp-use-insert-directory-program nil
+        ls-lisp-dirs-first t
+        ls-lisp-verbosity nil
+        dired-use-ls-dired nil
+        dired-listing-switches "-lah"))
 
 (setq dired-free-space nil
       dired-dwim-target t  ; Propose a target for intelligent moving/copying
@@ -2410,13 +2059,6 @@ permissions 为t,那么你还能编辑文件属性).
   (setq wdired-use-interactive-rename t)
   (setq wdired-allow-to-change-permissions t)
   (setq wdired-create-parent-directories t))
-#+end_src
-
-*** Ls-Lisp
-
-#+begin_src emacs-lisp
-(setq ls-lisp-verbosity nil)
-(setq ls-lisp-dirs-first t)
 #+end_src
 
 *** Ediff
@@ -2724,22 +2366,10 @@ Org files elsewhere always require confirmation."
   :if (display-graphic-p)
   ;; :ensure nil
   :after (eglot eldoc)
-  :init
-  ;; 滚动显示 *eldoc-doc* child frame 中的内容。
-  (defun scroll-eldoc-box-frame (direction)
-    (interactive "cScroll direction (u for up, d for down): ")
-    (let ((frame (get-buffer-window " *eldoc-box*" t)))
-      (when frame
-        (with-selected-window frame
-          (cond ((eq direction ?u) (scroll-down-line))
-                ((eq direction ?d) (scroll-up-line)))))))
-  :bind
-  (:map eglot-mode-map
-        ("C-M-k" . (lambda () (interactive) (scroll-eldoc-box-frame ?u)))
-        ("C-M-j" . (lambda () (interactive) (scroll-eldoc-box-frame ?d)))
-        ;; 按需弹出 posframe 来显示 eldoc buffer 内容。
-        ("C-c C-d" . eldoc-box-help-at-point)
-        )
+  :bind (:map eglot-mode-map
+              ("C-M-k" . eldoc-box-scroll-down)
+              ("C-M-j" . eldoc-box-scroll-up)
+              ("C-c C-d" . eldoc-box-help-at-point))
   :config
   (setq eldoc-box-max-pixel-height 600)
   (setq eldoc-box-max-pixel-width 1200)
@@ -2806,57 +2436,19 @@ Org files elsewhere always require confirmation."
       show-paren-when-point-inside-paren t
       show-paren-when-point-in-periphery nil)
 ;; (setq show-paren-style 'mixed)
-
-;; (dolist (mode '(prog-mode text-mode LaTeX-mode))
-;;   (add-hook (intern (format "%s-hook" mode))
-;;             (lambda ()
-;;               (modify-syntax-entry ?< ".")
-;;               (modify-syntax-entry ?> "."))))
 #+end_src
 
 *** Frames
 
 frame 的宽度、全高显示、边距和工具栏默认值统一在 early-init / Frame Defaults 设置。
-访达双击文件使用新的 frame；同一文件在多个 frame 中仍共享同一个缓冲区。
+访达双击文件由 Emacs 原生处理：文件已在可见 frame 中显示时复用该窗口，
+否则新建 frame。只需 early-init 中的 =ns-pop-up-frames t=。
 Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 frame。
 
 #+begin_src emacs-lisp
-(defun my/find-file-in-new-frame (filename)
-  "Visit FILENAME in a newly created frame, even if it is already displayed."
-  (interactive "FFind file in new frame: ")
-  ;; Read first, so a missing/unreadable file cannot leave an empty frame.
-  (let* ((buffer (find-file-noselect filename))
-         (frame (make-frame))
-         (switch-to-buffer-obey-display-actions nil))
-    (select-frame-set-input-focus frame)
-    (switch-to-buffer buffer)
-    frame))
-
-(defvar ns-input-file)
-(defvar ns-input-line)
-
-(defun my/ns-open-file-new-frame ()
-  "Open the next Finder file request in a new frame."
-  (interactive)
-  (when-let* ((filename (pop ns-input-file)))
-    (my/find-file-in-new-frame
-     (expand-file-name filename command-line-default-directory))))
-
-(defun my/ns-open-file-or-select-line ()
-  "Create a Finder frame, or preserve native handling for line requests."
-  (interactive)
-  ;; Cocoa sends ns-open-file-line for ordinary Finder opens too, with a nil
-  ;; line.  SyncTeX and other editor integrations supply an actual line.
-  (if ns-input-line
-      (ns-open-file-select-line)
-    (my/ns-open-file-new-frame)))
-
-(when (eq system-type 'darwin)
-  (define-key global-map [ns-open-file] #'my/ns-open-file-new-frame)
-  (define-key global-map [ns-open-file-line] #'my/ns-open-file-or-select-line))
-
 (setq resize-mini-windows 'grow-only)
 
+;; Do not create frames for ordinary Emacs buffer displays.
 (setq pop-up-frames nil)
 
 (setq visual-line-fringe-indicators '(left-curly-arrow right-curly-arrow))
@@ -2872,7 +2464,7 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
 
 #+begin_src emacs-lisp
 (setq frame-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
-      icon-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
+      ;; icon-title-format '("" "%b - (ര̀ᴗര́)و ̑̑")
       inhibit-splash-screen t
       use-file-dialog nil
       use-dialog-box nil
@@ -2972,45 +2564,24 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
 
 *** Font
 
+英文字体与 face 默认值统一设置，现有 frame 和新建 frame 自动继承。
+中文使用默认 fontset；不再在每次创建 frame 时重新设置字体和宽度。
+
 #+begin_src emacs-lisp
-(defun my/setup-frame-fonts (frame)
-  "Apply fonts to a graphical FRAME, preserving its requested column width."
-  (when (display-graphic-p frame)
-    (with-selected-frame frame
-      (let ((columns (frame-text-cols frame)))
-        (when (find-font (font-spec :family "Aporetic Sans Mono"))
-          (set-face-attribute 'default frame
-                            :font (font-spec :family "Aporetic Sans Mono" :size 13))
-          (set-face-attribute 'fixed-pitch frame
-                            :font (font-spec :family "Aporetic Sans Mono"))
-          (set-face-attribute 'bold frame
-                            :font (font-spec :family "Aporetic Sans Mono" :weight 'bold))
-          (set-face-attribute 'italic frame
-                            :font (font-spec :family "Aporetic Sans Mono")))
+(set-face-attribute 'default nil :family "Aporetic Sans Mono" :height 130
+                    :weight 'normal :slant 'normal)
+(set-face-attribute 'fixed-pitch nil :family "Aporetic Sans Mono")
+(set-face-attribute 'bold nil :family "Aporetic Sans Mono" :weight 'bold)
+(set-face-attribute 'italic nil :family "Aporetic Sans Mono")
+(set-face-attribute 'variable-pitch nil :family "Aporetic Serif Mono")
+(set-face-attribute 'mode-line-active nil :family "Aporetic Serif Mono"
+                    :weight 'bold :slant 'normal)
+(set-face-attribute 'mode-line-inactive nil :family "Aporetic Serif Mono" :slant 'normal)
+(set-face-attribute 'line-number nil :family "JetBrains Mono NL")
+(set-face-attribute 'line-number-current-line nil :family "JetBrains Mono NL" :weight 'bold)
 
-        (when (find-font (font-spec :family "Aporetic Serif Mono"))
-          (set-face-attribute 'variable-pitch frame
-                            :font (font-spec :family "Aporetic Serif Mono"))
-          (set-face-attribute 'mode-line-active frame
-                            :font (font-spec :family "Aporetic Serif Mono" :weight 'bold :slant 'normal)
-                            :slant 'normal)
-          (set-face-attribute 'mode-line-inactive frame
-                            :font (font-spec :family "Aporetic Serif Mono" :slant 'normal)
-                            :slant 'normal))
-
-        (when (find-font (font-spec :family "JetBrains Mono NL"))
-          (set-face-attribute 'line-number frame :font "JetBrains Mono NL")
-          (set-face-attribute 'line-number-current-line frame
-                            :font (font-spec :family "JetBrains Mono NL" :weight 'bold)))
-
-        (when (find-font (font-spec :family "等距更纱黑体 SC"))
-          (dolist (charset '(han kana symbol cjk-misc bopomofo))
-            (set-fontset-font t charset (font-spec :family "等距更纱黑体 SC") frame)))
-        ;; Font changes should preserve columns, including caller-supplied widths.
-        (set-frame-width frame columns)))))
-
-(my/setup-frame-fonts (selected-frame))
-(add-hook 'after-make-frame-functions #'my/setup-frame-fonts)
+(dolist (charset '(han kana symbol cjk-misc bopomofo))
+  (set-fontset-font t charset (font-spec :family "等距更纱黑体 SC")))
 #+end_src
 
 *** Theme
@@ -3033,51 +2604,14 @@ Emacs 内的 =C-x C-f= 和 =C-x b= 使用当前 frame，=C-x 5 0= 关闭当前 f
   (load-theme 'modus-operandi-deuteranopia t))
 #+end_src
 
-*** LaTeX Menu
+*** Menu
 
-LaTeX 编辑、编译、预览、数学、引用、片段和诊断集中到顶部的一个 LaTeX 菜单。
-复用原来的子菜单及命令，只在 LaTeX 缓冲区整理菜单位置；其他文件类型的菜单保持原样。
+关闭 Emacs 的菜单项，macOS 顶部系统菜单栏仍保留。
+在 init 中调用内置开关，避免 macOS 初始化覆盖 early-init 的 frame 参数。
+=M-`= 可随时重新开启或关闭 Emacs 菜单。
 
 #+begin_src emacs-lisp
-(defvar-local my/latex-menu-active nil)
-(defvar-local my/latex-menu-map-alist nil)
-
-(defun my/setup-latex-menu ()
-  "Collect LaTeX menus without changing their commands or editing keys."
-  (when (derived-mode-p 'latex-mode 'LaTeX-mode)
-    ;; Resolve the original menus when rebuilding an existing buffer's menu.
-    (let* ((my/latex-menu-active nil)
-           (editing-menu (key-binding [menu-bar latex]))
-           (grouped-menu (when (keymapp editing-menu)
-                           (copy-keymap editing-menu)))
-           (map (make-sparse-keymap)))
-      (when grouped-menu
-        (dolist (entry '((flymake . "Diagnostics")
-                         (yasnippet . "Snippets")
-                         (ref . "References")
-                         (math . "Math")
-                         (preview . "Preview")
-                         (command . "Compile")))
-          (let ((original (key-binding (vector 'menu-bar (car entry)))))
-            (when (keymapp original)
-              (define-key grouped-menu (vector (car entry))
-                          (list 'menu-item (cdr entry) original)))
-            (define-key map (vector 'menu-bar (car entry)) #'undefined)))
-        ;; Use a distinct event and mask the original menu.  Reusing `latex'
-        ;; makes Emacs merge both keymaps into duplicate native menu panes.
-        (define-key map [menu-bar latex] #'undefined)
-        (define-key map [menu-bar my-latex]
-                    (list 'menu-item "LaTeX" grouped-menu))
-        (setq-local my/latex-menu-map-alist
-                    (list (cons 'my/latex-menu-active map)))))
-    (setq-local my/latex-menu-active (and my/latex-menu-map-alist t))))
-
-;; A buffer-local emulation map takes precedence over minor-mode menus,
-;; while containing no bindings outside the menu bar.
-(add-to-list 'emulation-mode-map-alists 'my/latex-menu-map-alist)
-(dolist (hook '(after-change-major-mode-hook LaTeX-math-mode-hook
-                reftex-mode-hook yas-minor-mode-hook flymake-mode-hook))
-  (add-hook hook #'my/setup-latex-menu 90))
+(menu-bar-mode -1)
 #+end_src
 
 *** Mode Line
