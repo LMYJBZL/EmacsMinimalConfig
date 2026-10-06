@@ -11,6 +11,7 @@
 论文、课件及其他 TeX 文档使用相同设置。
 
 - =C-c C-c=：调用 LaTeXMk 编译，默认使用 XeLaTeX；文件或目录局部变量可指定其他引擎。
+- 显式编译至少运行一次引擎，避免 AUCTeX 将 latexmk 的“已是最新”误判为失败。
 - =M-q=：使用 AUCTeX 原生段落整理；普通保存不自动重排正文。
 - =C-c C-v=：通过 Skim 预览工作 PDF，并使用 SyncTeX 双向定位。
 
@@ -470,11 +471,16 @@ Snippets 由本 Org 生成；=custom.el= 和 =abbrev_defs= 由 Emacs 保存，�
 
 *** Buffer Management
 
+文件缓冲区默认只显示文件名；重名时由 Emacs 内置 uniquify 补充最短目录，
+并省略共同的末尾目录。例如 =paper.tex<草稿>=、=paper.tex<定稿>=。
+
 #+begin_src emacs-lisp
 (setq custom-buffer-done-kill t)
 (setq next-line-add-newlines nil)
 (setq bookmark-save-flag 1)
-(setq uniquify-buffer-name-style 'forward)
+(require 'uniquify)
+(setopt uniquify-buffer-name-style 'post-forward-angle-brackets
+        uniquify-strip-common-suffix t)
 (setq remote-file-name-inhibit-cache 50)
 ;; Preserve text copied in another app before an Emacs kill replaces it.
 (setq save-interprogram-paste-before-kill t)
@@ -1187,7 +1193,75 @@ LaTeX 宏、环境和交叉引用使用网格，每栏固定 24 个等宽字符�
    consult-source-recent-file consult-source-project-recent-file
    ;; :preview-key "M-."
    :preview-key '(:debounce 0.4 any))
-  (setq consult-narrow-key "<"))
+  (setq consult-narrow-key "<")
+
+  (defun my/consult-short-file-items (files &optional other-files)
+    "Return short display/path pairs for FILES, preserving their order.
+Only repeated basenames need parent directories.  Shared directory suffixes
+are omitted, and the original paths remain the opening/preview targets.
+OTHER-FILES participate in name conflicts without becoming candidates."
+    (let ((groups (make-hash-table :test #'equal)) items)
+      (dolist (file (delete-dups (append files other-files)))
+        (let ((item (cons (file-name-nondirectory file) file)))
+          (push item items)
+          (push item (gethash (car item) groups))))
+      (maphash
+       (lambda (_base group)
+         (when (cdr group)
+           (let ((entries
+                  (mapcar (lambda (item)
+                            (cons item (reverse (split-string
+                                                 (file-name-directory (cdr item))
+                                                 "/" t))))
+                          group)))
+             ;; Drop shared nearest parents before finding unique suffixes.
+             (while (and (cdar entries)
+                         (cl-every (lambda (entry)
+                                     (equal (cadr entry) (cadar entries)))
+                                   entries))
+               (dolist (entry entries) (setcdr entry (cddr entry))))
+             (dolist (entry entries)
+               (let ((parents (cdr entry)) (depth 1))
+                 (while (and (< depth (length parents))
+                             (cl-some (lambda (other)
+                                        (and (not (eq entry other))
+                                             (equal (seq-take parents depth)
+                                                    (seq-take (cdr other) depth))))
+                                      entries))
+                   (setq depth (1+ depth)))
+                 (setcar (car entry)
+                         (format "%s<%s>" (caar entry)
+                                 (if parents
+                                     (string-join (reverse (seq-take parents depth)) "/")
+                                   "/"))))))))
+       groups)
+      ;; A literal filename such as "paper.tex<draft>" must stay unambiguous.
+      (dolist (item items)
+        (when (cl-some (lambda (other)
+                        (and (not (eq item other))
+                             (equal (car item) (car other))))
+                      items)
+          (setcar item (cdr item))))
+      (seq-filter (lambda (item) (member (cdr item) files)) (nreverse items))))
+
+  ;; Consult accepts (DISPLAY . PATH) pairs.  Keep its native filtering,
+  ;; ordering, file category and preview; only this buffer source uses labels.
+  (defvar my/consult-source-recent-file nil)
+  (setq my/consult-source-recent-file (copy-sequence consult-source-recent-file))
+  (setf (plist-get my/consult-source-recent-file :items)
+        (lambda ()
+          (my/consult-short-file-items
+           (funcall (plist-get consult-source-recent-file :items))
+           (delq nil (mapcar (lambda (buffer)
+                              (when-let* ((file (buffer-file-name buffer)))
+                                (abbreviate-file-name file)))
+                            (buffer-list))))))
+  (setq consult-buffer-sources
+        (mapcar (lambda (source)
+                  (if (eq source 'consult-source-recent-file)
+                      'my/consult-source-recent-file
+                    source))
+                consult-buffer-sources)))
 
 #+end_src
 
@@ -1634,6 +1708,11 @@ Text arguments inside math remain part of delimiter navigation."
         TeX-PDF-mode t
         TeX-clean-confirm nil
         TeX-save-query nil)
+
+  ;; AUCTeX's TeX sentinel needs real compiler output, even for an unchanged PDF.
+  ;; Keep its native engine/output expansion and require one engine pass.
+  (setf (cadr (assoc "LaTeXMk" TeX-command-list))
+        "latexmk -gt %(latexmk-out) %(file-line-error) %(output-dir) %`%(extraopts) %S%(mode)%' %t")
 
   ;; AUCTeX's Flymake backend calls ChkTeX.  Keep the warning filters from the
   ;; old manual ChkTeX command, but attach them to the live Flymake checker.
